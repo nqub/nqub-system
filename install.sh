@@ -70,13 +70,32 @@ echo "📥 Cloning repositories..."
 echo "🐍 Setting up Python backend..."
 cd "$MAIN_DIR/nqub-coin-dispenser"
 
+# Ensure system time is correct (SSL can fail if time is wrong)
+sudo apt install -y ntp
+sudo service ntp restart
+sleep 5
+
+# Install system-level Python packages first
+sudo apt install -y python3-asyncio python3-pip python3-venv python3-wheel python3-setuptools
+
 # Create and activate virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
+# Configure pip to use system certificates and longer timeouts
+mkdir -p ~/.pip
+cat > ~/.pip/pip.conf << EOF
+[global]
+timeout = 120
+retries = 10
+index-url = https://pypi.org/simple
+extra-index-url = https://www.piwheels.org/simple
+verify = /etc/ssl/certs/ca-certificates.crt
+EOF
+
 # Install packages
-pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
-pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
+PYTHONHTTPSVERIFY=1 pip install --upgrade pip
+PYTHONHTTPSVERIFY=1 pip install -r requirements.txt
 prisma db push
 
 # 5. Setup Kiosk (Primary Screen)
