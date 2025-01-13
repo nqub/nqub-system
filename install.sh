@@ -90,8 +90,8 @@ sudo apt install -y build-essential libssl-dev zlib1g-dev libbz2-dev \
 
 pyenv install 3.12.1 || true  # Continue if already installed
 pyenv global 3.12.1
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
+pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
 prisma db push
 
 # 5. Setup Kiosk (Primary Screen)
