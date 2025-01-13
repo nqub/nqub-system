@@ -93,24 +93,22 @@ cd "$MAIN_DIR/nqub-coin-dispenser"
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip for offline/insecure installation
+# Configure pip with minimal SSL settings
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
 timeout = 180
 retries = 15
-trusted-host = 
-    pypi.org
-    files.pythonhosted.org
-    piwheels.org
-    www.piwheels.org
 EOF
 
-# Upgrade pip with SSL verification disabled
+# Upgrade pip first
 echo "📦 Upgrading pip..."
-python3 -m pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+PYTHONHTTPSVERIFY=0 python3 -m pip install --upgrade pip \
+    --index-url http://pypi.org/simple \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org
 
-# Install packages with SSL verification disabled
+# Install packages with minimal SSL verification
 echo "📦 Installing Python packages..."
 PACKAGES=("pyserial" "prisma" "flask[async]" "flask-cors" "requests")
 
@@ -118,11 +116,10 @@ for package in "${PACKAGES[@]}"; do
     echo "Installing $package..."
     for i in {1..3}; do
         echo "Attempt $i of 3..."
-        if pip install --no-cache-dir \
+        if PYTHONHTTPSVERIFY=0 pip install --no-cache-dir \
+            --index-url http://pypi.org/simple \
             --trusted-host pypi.org \
             --trusted-host files.pythonhosted.org \
-            --trusted-host piwheels.org \
-            --trusted-host www.piwheels.org \
             "$package"; then
             echo "Successfully installed $package"
             break
