@@ -98,40 +98,35 @@ DOWNLOAD_DIR="$HOME/pip-packages"
 mkdir -p "$DOWNLOAD_DIR"
 cd "$DOWNLOAD_DIR"
 
-# Download pip first using curl
+# Download pip first using curl with proper URL handling
 echo "📥 Downloading pip..."
-curl -k http://pypi.org/pypi/pip/json | grep download_url | grep whl | head -n1 | cut -d'"' -f4 | xargs curl -k -O
-PIP_WHL=$(ls *.whl)
+curl -k -L "https://pypi.org/pypi/pip/json" | \
+    python3 -c "import sys, json; print(json.load(sys.stdin)['urls'][0]['url'])" | \
+    xargs -I {} curl -k -L -O "{}"
 
 # Install pip from downloaded file
 echo "📦 Installing pip from local file..."
-python3 -m pip install --no-index --find-links=. $PIP_WHL
+python3 -m pip install --no-index --find-links=. ./pip*.whl
 
-# Define package list
-declare -A PACKAGES=(
-    ["pip"]="24.0"
-    ["pyserial"]="3.5"
-    ["prisma"]="0.11.0"
-    ["flask"]="3.0.2"
-    ["flask-cors"]="4.0.0"
-    ["requests"]="2.31.0"
+# Define package list with direct download URLs
+declare -A PACKAGE_URLS=(
+    ["pyserial"]="https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5-py2.py3-none-any.whl"
+    ["flask"]="https://files.pythonhosted.org/packages/bd/0e/63738b39b798f6c8c741a51b107006835f71e5d0ce3142a426bc60f222cf/Flask-3.0.2-py3-none-any.whl"
+    ["flask-cors"]="https://files.pythonhosted.org/packages/5a/be/e8a9c74f05b883d37aacd408d681f4f596932e5b9c86b52b2b9f1248c255/Flask_Cors-4.0.0-py2.py3-none-any.whl"
+    ["requests"]="https://files.pythonhosted.org/packages/70/8e/0e2d847013cb52cd35b38c009bb167a1a26b2ce6cd6965bf26b47bc0bf44/requests-2.31.0-py3-none-any.whl"
 )
 
 # Download and install each package
-for package in "${!PACKAGES[@]}"; do
-    version="${PACKAGES[$package]}"
-    echo "📥 Downloading $package==$version..."
+for package in "${!PACKAGE_URLS[@]}"; do
+    url="${PACKAGE_URLS[$package]}"
+    echo "📥 Downloading $package..."
     
-    # Try multiple methods to download the package
-    if ! curl -k -L -o "$package-$version.whl" "http://files.pythonhosted.org/packages/py3/$package/$version/$package-$version-py3-none-any.whl"; then
-        if ! curl -k -L -o "$package-$version.tar.gz" "http://pypi.org/packages/source/${package:0:1}/$package/$package-$version.tar.gz"; then
-            echo "⚠️ Failed to download $package"
-            continue
-        fi
+    if curl -k -L -O "$url"; then
+        echo "📦 Installing $package..."
+        PYTHONHTTPSVERIFY=0 pip install --no-index --find-links=. ./"$package"*.whl || true
+    else
+        echo "⚠️ Failed to download $package"
     fi
-    
-    echo "📦 Installing $package locally..."
-    PYTHONHTTPSVERIFY=0 pip install --no-index --find-links=. ./$package-$version.* || true
 done
 
 # Clean up downloads
