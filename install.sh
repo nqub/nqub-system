@@ -93,7 +93,7 @@ cd "$MAIN_DIR/nqub-coin-dispenser"
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip with minimal SSL settings
+# Basic pip configuration
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
@@ -101,14 +101,15 @@ timeout = 180
 retries = 15
 EOF
 
-# Upgrade pip first
+# Force pip to use legacy installation to avoid SSL issues
 echo "📦 Upgrading pip..."
 PYTHONHTTPSVERIFY=0 python3 -m pip install --upgrade pip \
     --index-url http://pypi.org/simple \
     --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
+    --trusted-host files.pythonhosted.org \
+    --use-deprecated=legacy-resolver
 
-# Install packages with minimal SSL verification
+# Install packages using the most basic approach
 echo "📦 Installing Python packages..."
 PACKAGES=("pyserial" "prisma" "flask[async]" "flask-cors" "requests")
 
@@ -116,10 +117,12 @@ for package in "${PACKAGES[@]}"; do
     echo "Installing $package..."
     for i in {1..3}; do
         echo "Attempt $i of 3..."
-        if PYTHONHTTPSVERIFY=0 pip install --no-cache-dir \
+        if PYTHONHTTPSVERIFY=0 pip install \
+            --use-deprecated=legacy-resolver \
             --index-url http://pypi.org/simple \
             --trusted-host pypi.org \
             --trusted-host files.pythonhosted.org \
+            --no-deps \
             "$package"; then
             echo "Successfully installed $package"
             break
@@ -132,6 +135,14 @@ for package in "${PACKAGES[@]}"; do
         fi
     done
 done
+
+# Install dependencies separately
+echo "📦 Installing dependencies..."
+PYTHONHTTPSVERIFY=0 pip install \
+    --use-deprecated=legacy-resolver \
+    --index-url http://pypi.org/simple \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org
 
 # Initialize prisma with retry
 echo "🔄 Initializing Prisma..."
