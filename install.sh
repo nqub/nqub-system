@@ -26,7 +26,7 @@ echo "📦 Installing system prerequisites..."
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y ca-certificates openssl
 sudo update-ca-certificates
-sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser curl
+sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser curl python3 python3-pip python3-venv
 
 # Install Github CLI
 echo "🔧 Installing GitHub CLI..."
@@ -69,27 +69,12 @@ echo "📥 Cloning repositories..."
 # 4. Setup Python Backend
 echo "🐍 Setting up Python backend..."
 cd "$MAIN_DIR/nqub-coin-dispenser"
-if ! command -v pyenv &> /dev/null; then
-    curl https://pyenv.run | bash
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)"
-    
-    # Add to bashrc if not already present
-    if ! grep -q "pyenv init" ~/.bashrc; then
-        echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-        echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-        echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-    fi
-fi
 
-# Install Python build dependencies
-sudo apt install -y build-essential libssl-dev zlib1g-dev libbz2-dev \
-    libreadline-dev libsqlite3-dev curl libncursesw5-dev xz-utils \
-    tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
-pyenv install 3.12.1 || true  # Continue if already installed
-pyenv global 3.12.1
+# Install packages
 pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
 pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
 prisma db push
@@ -119,8 +104,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/nqub-coin-dispenser
-Environment=PATH=$HOME/.pyenv/shims:$PATH
-ExecStart=bash -c "python api_server.py & python main.py"
+ExecStart=/bin/bash -c 'source venv/bin/activate && python api_server.py & python main.py'
 Restart=always
 StandardOutput=append:$LOG_DIR/backend.log
 StandardError=append:$LOG_DIR/backend.error.log
@@ -202,8 +186,10 @@ for repo in */; do
         npm install
         npm run build
     elif [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt
+        source venv/bin/activate
+        pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
         prisma db push
+        deactivate
     fi
     cd ..
 done
