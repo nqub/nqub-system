@@ -131,12 +131,39 @@ install_with_retry() {
 
 # Install packages with retry mechanism
 echo "📦 Installing Python packages..."
-install_with_retry --upgrade pip
-install_with_retry pyserial
-install_with_retry prisma
-install_with_retry "flask[async]"
-install_with_retry flask-cors
-install_with_retry requests
+pip install --upgrade pip \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    --trusted-host piwheels.org \
+    --no-cache-dir
+
+# Install each package with retry
+for package in "pyserial" "prisma" "flask[async]" "flask-cors" "requests"; do
+    echo "Installing $package..."
+    attempt=1
+    max_attempts=3
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "Attempt $attempt of $max_attempts..."
+        if pip install "$package" \
+            --trusted-host pypi.org \
+            --trusted-host files.pythonhosted.org \
+            --trusted-host piwheels.org \
+            --no-cache-dir; then
+            echo "Successfully installed $package"
+            break
+        fi
+        
+        attempt=$((attempt + 1))
+        if [ $attempt -le $max_attempts ]; then
+            echo "Retrying in 5 seconds..."
+            sleep 5
+        else
+            echo "Failed to install $package after $max_attempts attempts"
+            exit 1
+        fi
+    done
+done
 
 # Initialize prisma with retry
 echo "🔄 Initializing Prisma..."
