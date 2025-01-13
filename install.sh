@@ -94,22 +94,67 @@ clone_or_update_repo "nqub-coin-dispenser" "backend"
 clone_or_update_repo "token-dispenser-kiosk" "kiosk"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
 
-# 4. Setup Python Environment
+# Fix SSL certificates
+log "🔒 Updating SSL certificates..."
+sudo apt-get install -y ca-certificates openssl
+sudo update-ca-certificates --fresh
+
+# Create and configure pip.conf
+log "⚙️ Configuring pip..."
+mkdir -p $HOME/.pip
+cat > $HOME/.pip/pip.conf << EOF
+[global]
+trusted-host = 
+    pypi.org
+    files.pythonhosted.org
+    pypi.python.org
+    piwheels.org
+timeout = 60
+retries = 3
+EOF
+
+# Setup Python virtual environment with proper SSL
 log "🐍 Setting up Python environment..."
 cd "$MAIN_DIR/backend"
+
+# Install SSL dependencies first
+sudo apt-get install -y \
+    python3-dev \
+    libssl-dev \
+    libffi-dev \
+    build-essential \
+    python3-pip
 
 python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
-# Install Python dependencies with retries and SSL verification disabled
-log "📦 Installing Python packages..."
-python3 -m pip install --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org \
-    pip wheel setuptools
-
-pip install -r requirements.txt \
+# Upgrade pip with special flags
+python3 -m pip install --no-cache-dir --upgrade pip \
     --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
+    --trusted-host files.pythonhosted.org \
+    --trusted-host piwheels.org
+
+# Install wheel and setuptools first
+pip install --no-cache-dir wheel setuptools \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    --trusted-host piwheels.org
+
+# Install requirements with retry mechanism
+log "📦 Installing Python packages..."
+for i in {1..3}; do
+    if pip install -r requirements.txt \
+        --no-cache-dir \
+        --trusted-host pypi.org \
+        --trusted-host files.pythonhosted.org \
+        --trusted-host piwheels.org; then
+        log "✅ Python packages installed successfully"
+        break
+    else
+        log "⚠️ Attempt $i failed, retrying..."
+        sleep 5
+    fi
+done
 
 # Initialize database
 log "🗄️ Initializing database..."
