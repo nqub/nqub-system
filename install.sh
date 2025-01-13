@@ -88,16 +88,18 @@ cat > ~/.pip/pip.conf << EOF
 [global]
 timeout = 180
 retries = 15
-index-url = http://pypi.org/simple
-extra-index-url = http://www.piwheels.org/simple
-trusted-host = pypi.org
-               files.pythonhosted.org
-               piwheels.org
+index-url = https://pypi.org/simple
+extra-index-url = https://www.piwheels.org/simple
+trusted-host = 
+    pypi.org
+    files.pythonhosted.org
+    www.piwheels.org
+    piwheels.org
 EOF
 
 # Install packages one by one to avoid dependency issues
 pip install --upgrade pip
-pip install pyserial
+pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org pyserial
 pip install prisma
 pip install "flask[async]"
 pip install flask-cors
