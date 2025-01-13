@@ -21,10 +21,18 @@ trap 'handle_error $LINENO' ERR
 mkdir -p "$MAIN_DIR"
 cd "$MAIN_DIR"
 
-# 1. System Prerequisites
+Copy# 1. System Prerequisites
 echo "📦 Installing system prerequisites..."
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser
+
+# Install Github CLI
+type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
 
 # Install Node.js 20.x
 if ! command -v node &> /dev/null; then
