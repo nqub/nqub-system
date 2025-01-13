@@ -93,70 +93,45 @@ cd "$MAIN_DIR/nqub-coin-dispenser"
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip with enhanced settings
+# Configure pip for offline/insecure installation
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
 timeout = 180
 retries = 15
-index-url = https://pypi.org/simple
-extra-index-url = https://www.piwheels.org/simple
 trusted-host = 
     pypi.org
     files.pythonhosted.org
-    www.piwheels.org
     piwheels.org
+    www.piwheels.org
 EOF
 
-# Enhanced pip installation with retry mechanism
-install_with_retry() {
-    local package=$1
-    local max_attempts=3
-    local attempt=1
-    
-    while [ $attempt -le $max_attempts ]; do
-        echo "Installing $package (Attempt $attempt of $max_attempts)..."
+# Upgrade pip with SSL verification disabled
+echo "📦 Upgrading pip..."
+python3 -m pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+
+# Install packages with SSL verification disabled
+echo "📦 Installing Python packages..."
+PACKAGES=("pyserial" "prisma" "flask[async]" "flask-cors" "requests")
+
+for package in "${PACKAGES[@]}"; do
+    echo "Installing $package..."
+    for i in {1..3}; do
+        echo "Attempt $i of 3..."
         if pip install --no-cache-dir \
             --trusted-host pypi.org \
             --trusted-host files.pythonhosted.org \
             --trusted-host piwheels.org \
+            --trusted-host www.piwheels.org \
             "$package"; then
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        sleep 5
-    done
-    return 1
-}
-
-# Install packages with retry mechanism
-echo "📦 Installing Python packages..."
-python3 -m pip install --upgrade pip
-
-# Install each package with retry
-for package in "pyserial" "prisma" "flask[async]" "flask-cors" "requests"; do
-    echo "Installing $package..."
-    attempt=1
-    max_attempts=3
-    
-    while [ $attempt -le $max_attempts ]; do
-        echo "Attempt $attempt of $max_attempts..."
-        if pip install "$package" \
-            --trusted-host pypi.org \
-            --trusted-host files.pythonhosted.org \
-            --trusted-host piwheels.org \
-            --no-cache-dir; then
             echo "Successfully installed $package"
             break
-        fi
-        
-        attempt=$((attempt + 1))
-        if [ $attempt -le $max_attempts ]; then
+        elif [ $i -eq 3 ]; then
+            echo "Failed to install $package after 3 attempts"
+            exit 1
+        else
             echo "Retrying in 5 seconds..."
             sleep 5
-        else
-            echo "Failed to install $package after $max_attempts attempts"
-            exit 1
         fi
     done
 done
