@@ -76,7 +76,7 @@ sudo service ntp restart
 sleep 5
 
 # Install system-level Python packages first
-sudo apt install -y python3-asyncio python3-pip python3-venv python3-wheel python3-setuptools
+sudo apt install -y python3-pip python3-venv python3-wheel python3-setuptools
 
 # Create and activate virtual environment
 python3 -m venv venv
