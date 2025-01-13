@@ -93,56 +93,50 @@ cd "$MAIN_DIR/nqub-coin-dispenser"
 python3 -m venv venv
 source venv/bin/activate
 
-# Basic pip configuration
-mkdir -p ~/.pip
-cat > ~/.pip/pip.conf << EOF
-[global]
-timeout = 180
-retries = 15
-EOF
+# Create a directory for downloaded packages
+DOWNLOAD_DIR="$HOME/pip-packages"
+mkdir -p "$DOWNLOAD_DIR"
+cd "$DOWNLOAD_DIR"
 
-# Force pip to use legacy installation to avoid SSL issues
-echo "📦 Upgrading pip..."
-PYTHONHTTPSVERIFY=0 python3 -m pip install --upgrade pip \
-    --index-url http://pypi.org/simple \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org \
-    --use-deprecated=legacy-resolver
+# Download pip first using curl
+echo "📥 Downloading pip..."
+curl -k http://pypi.org/pypi/pip/json | grep download_url | grep whl | head -n1 | cut -d'"' -f4 | xargs curl -k -O
+PIP_WHL=$(ls *.whl)
 
-# Install packages using the most basic approach
-echo "📦 Installing Python packages..."
-PACKAGES=("pyserial" "prisma" "flask[async]" "flask-cors" "requests")
+# Install pip from downloaded file
+echo "📦 Installing pip from local file..."
+python3 -m pip install --no-index --find-links=. $PIP_WHL
 
-for package in "${PACKAGES[@]}"; do
-    echo "Installing $package..."
-    for i in {1..3}; do
-        echo "Attempt $i of 3..."
-        if PYTHONHTTPSVERIFY=0 pip install \
-            --use-deprecated=legacy-resolver \
-            --index-url http://pypi.org/simple \
-            --trusted-host pypi.org \
-            --trusted-host files.pythonhosted.org \
-            --no-deps \
-            "$package"; then
-            echo "Successfully installed $package"
-            break
-        elif [ $i -eq 3 ]; then
-            echo "Failed to install $package after 3 attempts"
-            exit 1
-        else
-            echo "Retrying in 5 seconds..."
-            sleep 5
+# Define package list
+declare -A PACKAGES=(
+    ["pip"]="24.0"
+    ["pyserial"]="3.5"
+    ["prisma"]="0.11.0"
+    ["flask"]="3.0.2"
+    ["flask-cors"]="4.0.0"
+    ["requests"]="2.31.0"
+)
+
+# Download and install each package
+for package in "${!PACKAGES[@]}"; do
+    version="${PACKAGES[$package]}"
+    echo "📥 Downloading $package==$version..."
+    
+    # Try multiple methods to download the package
+    if ! curl -k -L -o "$package-$version.whl" "http://files.pythonhosted.org/packages/py3/$package/$version/$package-$version-py3-none-any.whl"; then
+        if ! curl -k -L -o "$package-$version.tar.gz" "http://pypi.org/packages/source/${package:0:1}/$package/$package-$version.tar.gz"; then
+            echo "⚠️ Failed to download $package"
+            continue
         fi
-    done
+    fi
+    
+    echo "📦 Installing $package locally..."
+    PYTHONHTTPSVERIFY=0 pip install --no-index --find-links=. ./$package-$version.* || true
 done
 
-# Install dependencies separately
-echo "📦 Installing dependencies..."
-PYTHONHTTPSVERIFY=0 pip install \
-    --use-deprecated=legacy-resolver \
-    --index-url http://pypi.org/simple \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
+# Clean up downloads
+cd -
+rm -rf "$DOWNLOAD_DIR"
 
 # Initialize prisma with retry
 echo "🔄 Initializing Prisma..."
