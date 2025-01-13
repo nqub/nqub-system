@@ -8,12 +8,15 @@ set -x
 MAIN_DIR="$HOME/nqub-system"
 LOG_DIR="/var/log/nqub"
 
-# Error handling
+# Error handling with more detail
 handle_error() {
-    echo "❌ Error occurred at line $1"
+    local line_no=$1
+    local error_code=$2
+    echo "❌ Error occurred at line $line_no (Exit code: $error_code)"
+    echo "Please check the logs for more details"
     exit 1
 }
-trap 'handle_error $LINENO' ERR
+trap 'handle_error $LINENO $?' ERR
 
 # Create main directory and log directory
 mkdir -p "$MAIN_DIR"
@@ -21,20 +24,36 @@ sudo mkdir -p "$LOG_DIR"
 sudo chown $USER:$USER "$LOG_DIR"
 cd "$MAIN_DIR"
 
-# 1. System Prerequisites
+# 1. Enhanced System Prerequisites
 echo "📦 Installing system prerequisites..."
-sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y ca-certificates openssl
-sudo update-ca-certificates
-sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser curl python3 python3-pip python3-venv
+sudo apt update
+sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+sudo apt full-upgrade -y
+
+# SSL/Security packages
+echo "🔒 Setting up SSL/Security..."
+sudo apt install -y ca-certificates openssl libssl-dev libffi-dev python3-dev
+sudo update-ca-certificates --fresh
+
+# Time synchronization
+echo "⏰ Synchronizing system time..."
+sudo apt install -y ntp ntpdate
+sudo systemctl stop ntp
+sudo ntpdate -u pool.ntp.org
+sudo systemctl start ntp
+sleep 5
+
+# Core development packages
+sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser python3 python3-pip python3-venv python3-wheel python3-setuptools
 
 # Install Github CLI
 echo "🔧 Installing GitHub CLI..."
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-sudo apt update
-sudo apt install gh -y
+type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
 
 # GitHub Authentication
 echo "🔑 Please authenticate with GitHub..."
@@ -50,8 +69,8 @@ fi
 # 2. Detect Displays
 echo "🖥️ Detecting displays..."
 if command -v xrandr &> /dev/null; then
-    PRIMARY_DISPLAY=$(xrandr | grep "connected" | head -n 1 | cut -d' ' -f1)
-    SECONDARY_DISPLAY=$(xrandr | grep "connected" | tail -n 1 | cut -d' ' -f1)
+    PRIMARY_DISPLAY=$(xrandr | grep " connected" | head -n 1 | cut -d' ' -f1)
+    SECONDARY_DISPLAY=$(xrandr | grep " connected" | tail -n 1 | cut -d' ' -f1)
     echo "Primary display: $PRIMARY_DISPLAY"
     echo "Secondary display: $SECONDARY_DISPLAY"
 else
@@ -66,23 +85,15 @@ echo "📥 Cloning repositories..."
 [ ! -d "token-dispenser-kiosk" ] && gh repo clone nqub/token-dispenser-kiosk
 [ ! -d "external-display" ] && gh repo clone nqub/nqub-coin-dispenser-external-screen external-display
 
-# 4. Setup Python Backend
+# 4. Enhanced Python Backend Setup
 echo "🐍 Setting up Python backend..."
 cd "$MAIN_DIR/nqub-coin-dispenser"
-
-# Ensure system time is correct (SSL can fail if time is wrong)
-sudo apt install -y ntp
-sudo service ntp restart
-sleep 5
-
-# Install system-level Python packages first
-sudo apt install -y python3-pip python3-venv python3-wheel python3-setuptools
 
 # Create and activate virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip with HTTP and trusted hosts
+# Configure pip with enhanced settings
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
@@ -97,16 +108,39 @@ trusted-host =
     piwheels.org
 EOF
 
-# Install packages one by one to avoid dependency issues
-pip install --upgrade pip
-pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org pyserial
-pip install prisma
-pip install "flask[async]"
-pip install flask-cors
-pip install requests
+# Enhanced pip installation with retry mechanism
+install_with_retry() {
+    local package=$1
+    local max_attempts=3
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        echo "Installing $package (Attempt $attempt of $max_attempts)..."
+        if pip install --no-cache-dir \
+            --trusted-host pypi.org \
+            --trusted-host files.pythonhosted.org \
+            --trusted-host piwheels.org \
+            "$package"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+    return 1
+}
 
-# Initialize prisma
-prisma db push
+# Install packages with retry mechanism
+echo "📦 Installing Python packages..."
+install_with_retry --upgrade pip
+install_with_retry pyserial
+install_with_retry prisma
+install_with_retry "flask[async]"
+install_with_retry flask-cors
+install_with_retry requests
+
+# Initialize prisma with retry
+echo "🔄 Initializing Prisma..."
+prisma db push || (sleep 5 && prisma db push)
 
 # 5. Setup Kiosk (Primary Screen)
 echo "🖥️ Setting up kiosk application..."
@@ -133,8 +167,10 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/nqub-coin-dispenser
+Environment="SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
 ExecStart=/bin/bash -c 'source venv/bin/activate && python api_server.py & python main.py'
 Restart=always
+RestartSec=10
 StandardOutput=append:$LOG_DIR/backend.log
 StandardError=append:$LOG_DIR/backend.error.log
 
@@ -156,6 +192,7 @@ Environment=XAUTHORITY=$HOME/.Xauthority
 WorkingDirectory=$MAIN_DIR/token-dispenser-kiosk
 ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --no-sandbox http://localhost:3000
 Restart=always
+RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk.log
 StandardError=append:$LOG_DIR/kiosk.error.log
 
@@ -177,6 +214,7 @@ Environment=XAUTHORITY=$HOME/.Xauthority
 WorkingDirectory=$MAIN_DIR/external-display
 ExecStart=/usr/bin/npm run preview
 Restart=always
+RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
 StandardError=append:$LOG_DIR/external.error.log
 
@@ -202,21 +240,33 @@ RemainAfterExit=yes
 WantedBy=graphical.target
 EOF
 
-# 8. Create update script
+# 8. Create update script with enhanced error handling
 cat > "$MAIN_DIR/update.sh" << 'EOF'
 #!/bin/bash
+set -e
+
 cd "$HOME/nqub-system"
+
+handle_error() {
+    echo "❌ Error occurred during update at line $1"
+    exit 1
+}
+trap 'handle_error $LINENO' ERR
 
 # Update all repositories
 for repo in */; do
     cd "$repo"
+    echo "📦 Updating $(basename $repo)..."
     git pull
     if [ -f "package.json" ]; then
         npm install
         npm run build
     elif [ -f "requirements.txt" ]; then
         source venv/bin/activate
-        pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org --trusted-host piwheels.org
+        pip install -r requirements.txt \
+            --trusted-host pypi.org \
+            --trusted-host files.pythonhosted.org \
+            --trusted-host piwheels.org
         prisma db push
         deactivate
     fi
@@ -224,12 +274,16 @@ for repo in */; do
 done
 
 # Restart services
+echo "🔄 Restarting services..."
 sudo systemctl restart nqub-backend nqub-kiosk nqub-external
+
+echo "✅ Update complete!"
 EOF
 
 chmod +x "$MAIN_DIR/update.sh"
 
 # Enable and start services
+echo "🔧 Enabling and starting services..."
 sudo systemctl daemon-reload
 sudo systemctl enable nqub-backend nqub-kiosk nqub-external nqub-screen-config
 sudo systemctl start nqub-screen-config
@@ -243,3 +297,15 @@ echo "🔍 Check service status with:"
 echo "   sudo systemctl status nqub-backend"
 echo "   sudo systemctl status nqub-kiosk"
 echo "   sudo systemctl status nqub-external"
+
+# Verify installation
+echo "🔍 Verifying installation..."
+if ! systemctl is-active --quiet nqub-backend; then
+    echo "⚠️ Warning: Backend service is not running. Check logs at $LOG_DIR/backend.error.log"
+fi
+if ! systemctl is-active --quiet nqub-kiosk; then
+    echo "⚠️ Warning: Kiosk service is not running. Check logs at $LOG_DIR/kiosk.error.log"
+fi
+if ! systemctl is-active --quiet nqub-external; then
+    echo "⚠️ Warning: External display service is not running. Check logs at $LOG_DIR/external.error.log"
+fi
