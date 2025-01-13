@@ -24,6 +24,14 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
+# Filesystem expansion and disk setup
+log "💾 Setting up filesystem..."
+sudo parted /dev/mmcblk0 resizepart 2 100%
+sudo resize2fs /dev/mmcblk0p2
+
+# Wait for filesystem operations to complete
+sleep 5
+
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
 sudo raspi-config nonint do_spi 0  # Enable SPI
@@ -137,36 +145,31 @@ EOF
 # Setup Python virtual environment
 log "🐍 Setting up Python environment..."
 cd "$MAIN_DIR/backend"
-python3 -m venv "$VENV_DIR"
+
+# Create virtual environment without pip
+python3 -m venv --without-pip "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
-# Install base packages with retries and proper SSL handling
-log "📦 Installing base Python packages..."
-for package in pip setuptools wheel; do
-    for i in {1..3}; do
-        if python3 -m pip install --upgrade $package \
-            --no-cache-dir \
-            --trusted-host pypi.org \
-            --trusted-host files.pythonhosted.org \
-            --trusted-host piwheels.org; then
-            log "✅ Installed $package successfully"
-            break
-        else
-            log "⚠️ Attempt $i for $package failed, retrying..."
-            sleep 5
-        fi
-    done
-done
+# Download and install pip in the virtual environment
+wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py
+python3 get-pip.py --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org
 
-# Install project requirements with proper error handling
-log "📦 Installing project requirements..."
+# Verify pip is installed in the virtual environment
+which pip
+pip --version
+
+# Now proceed with package installation
+pip install --no-cache-dir --upgrade wheel setuptools \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org
+
+# Install requirements with proper error handling
 for i in {1..3}; do
     if pip install -r requirements.txt \
         --no-cache-dir \
         --trusted-host pypi.org \
-        --trusted-host files.pythonhosted.org \
-        --trusted-host piwheels.org; then
-        log "✅ Project requirements installed successfully"
+        --trusted-host files.pythonhosted.org; then
+        log "✅ Python packages installed successfully"
         break
     else
         log "⚠️ Attempt $i failed, retrying..."
