@@ -82,7 +82,7 @@ sudo apt install -y python3-pip python3-venv python3-wheel python3-setuptools
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip to use system certificates and longer timeouts forcing http instead of https
+# Configure pip with HTTP and trusted hosts
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
@@ -95,9 +95,15 @@ trusted-host = pypi.org
                piwheels.org
 EOF
 
-# Install packages
-PYTHONHTTPSVERIFY=1 pip install --upgrade pip --no-deps
-PYTHONHTTPSVERIFY=1 pip install -r requirements.txt
+# Install packages one by one to avoid dependency issues
+pip install --upgrade pip
+pip install pyserial
+pip install prisma
+pip install "flask[async]"
+pip install flask-cors
+pip install requests
+
+# Initialize prisma
 prisma db push
 
 # 5. Setup Kiosk (Primary Screen)
