@@ -131,11 +131,7 @@ install_with_retry() {
 
 # Install packages with retry mechanism
 echo "📦 Installing Python packages..."
-pip install --upgrade pip \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org \
-    --trusted-host piwheels.org \
-    --no-cache-dir
+python3 -m pip install --upgrade pip
 
 # Install each package with retry
 for package in "pyserial" "prisma" "flask[async]" "flask-cors" "requests"; do
