@@ -82,15 +82,17 @@ sudo apt install -y python3-pip python3-venv python3-wheel python3-setuptools
 python3 -m venv venv
 source venv/bin/activate
 
-# Configure pip to use system certificates and longer timeouts
+# Configure pip to use system certificates and longer timeouts forcing http instead of https
 mkdir -p ~/.pip
 cat > ~/.pip/pip.conf << EOF
 [global]
-timeout = 120
-retries = 10
-index-url = https://pypi.org/simple
-extra-index-url = https://www.piwheels.org/simple
-verify = /etc/ssl/certs/ca-certificates.crt
+timeout = 180
+retries = 15
+index-url = http://pypi.org/simple
+extra-index-url = http://www.piwheels.org/simple
+trusted-host = pypi.org
+               files.pythonhosted.org
+               piwheels.org
 EOF
 
 # Install packages
