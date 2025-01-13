@@ -24,6 +24,8 @@ cd "$MAIN_DIR"
 # 1. System Prerequisites
 echo "📦 Installing system prerequisites..."
 sudo apt update && sudo apt full-upgrade -y
+sudo apt install -y ca-certificates openssl
+sudo update-ca-certificates
 sudo apt install -y build-essential git xterm setserial x11-xserver-utils chromium-browser curl
 
 # Install Github CLI
