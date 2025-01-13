@@ -94,7 +94,7 @@ verify = /etc/ssl/certs/ca-certificates.crt
 EOF
 
 # Install packages
-PYTHONHTTPSVERIFY=1 pip install --upgrade pip
+PYTHONHTTPSVERIFY=1 pip install --upgrade pip --no-deps
 PYTHONHTTPSVERIFY=1 pip install -r requirements.txt
 prisma db push
 
