@@ -91,7 +91,7 @@ clone_or_update_repo() {
 }
 
 clone_or_update_repo "nqub-coin-dispenser" "backend"
-clone_or_update_repo "token-dis-kiosk" "kiosk"
+clone_or_update_repo "token-dispenser-kiosk" "kiosk"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
 
 # Install SSL and Python dependencies first
