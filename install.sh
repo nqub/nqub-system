@@ -24,19 +24,12 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Filesystem expansion and disk setup
-log "💾 Setting up filesystem..."
-sudo parted /dev/mmcblk0 resizepart 2 100%
-sudo resize2fs /dev/mmcblk0p2
-
-# Wait for filesystem operations to complete
-sleep 5
-
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
-sudo raspi-config nonint do_spi 0  # Enable SPI
-sudo raspi-config nonint do_serial 0  # Enable Serial Port
-sudo raspi-config nonint do_expand_rootfs  # Expand filesystem
+# Use raspi-config for safe filesystem expansion
+sudo raspi-config --expand-rootfs
+sudo raspi-config nonint do_spi 0      # Enable SPI
+sudo raspi-config nonint do_serial 0    # Enable Serial Port
 
 # 2. System Setup
 log "📦 Setting up system directories..."
@@ -52,18 +45,21 @@ sudo apt install -y \
     build-essential \
     git \
     curl \
+    wget \
     xterm \
     chromium-browser \
     python3 \
     python3-pip \
     python3-venv \
-    x11-xserver-utils \
-    setserial \
+    python3-dev \
     libssl-dev \
     libffi-dev \
-    python3-dev \
     libudev-dev \
-    unclutter
+    x11-xserver-utils \
+    setserial \
+    unclutter \
+    ca-certificates \
+    openssl
 
 # Install Node.js 20.x
 log "📦 Installing Node.js..."
@@ -102,30 +98,14 @@ clone_or_update_repo "nqub-coin-dispenser" "backend"
 clone_or_update_repo "token-dispenser-kiosk" "kiosk"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
 
-# Install SSL and Python dependencies first
-log "🔒 Setting up SSL and Python dependencies..."
-sudo apt-get update
-sudo apt-get install -y \
-    python3-dev \
-    libssl-dev \
-    libffi-dev \
-    build-essential \
-    python3-pip \
-    python3-venv \
-    ca-certificates \
-    openssl \
-    wget
+# 4. Setup Python Environment
+log "🔧 Setting up Python environment..."
 
-# Fix SSL certificates
+# Update certificates
 log "🔒 Updating SSL certificates..."
 sudo update-ca-certificates --fresh
 
-# Download pip manually with wget
-log "📦 Downloading pip..."
-wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py
-python3 get-pip.py --trusted-host pypi.org --trusted-host files.pythonhosted.org
-
-# Create and configure pip.conf with more detailed settings
+# Configure pip settings
 log "⚙️ Configuring pip..."
 mkdir -p $HOME/.pip
 cat > $HOME/.pip/pip.conf << EOF
@@ -137,42 +117,143 @@ trusted-host =
     piwheels.org
 timeout = 60
 retries = 3
-no-cache-dir = true
-index-url = http://pypi.org/simple/
-extra-index-url = https://www.piwheels.org/simple/
 EOF
 
-# Setup Python virtual environment
-log "🐍 Setting up Python environment..."
+# Setup virtual environment
 cd "$MAIN_DIR/backend"
-
-# Create virtual environment without pip
-python3 -m venv --without-pip "$VENV_DIR"
+log "🐍 Creating virtual environment..."
+python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
-# Download and install pip in the virtual environment
-wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py
-python3 get-pip.py --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org
-
-# Verify pip is installed in the virtual environment
-which pip
-pip --version
-
-# Now proceed with package installation
-pip install --no-cache-dir --upgrade wheel setuptools \
+# Install base packages in virtual environment
+log "📦 Installing base Python packages..."
+python3 -m pip install --upgrade pip \
     --trusted-host pypi.org \
     --trusted-host files.pythonhosted.org
 
-# Install requirements with proper error handling
-for i in {1..3}; do
-    if pip install -r requirements.txt \
-        --no-cache-dir \
-        --trusted-host pypi.org \
-        --trusted-host files.pythonhosted.org; then
-        log "✅ Python packages installed successfully"
-        break
-    else
-        log "⚠️ Attempt $i failed, retrying..."
-        sleep 5
-    fi
-done
+pip install --no-cache-dir wheel setuptools \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org
+
+# Install project requirements
+log "📦 Installing project requirements..."
+pip install -r requirements.txt \
+    --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org
+
+# Initialize database
+log "🗄️ Initializing database..."
+prisma db push
+
+# 5. Setup Frontend Applications
+log "🖥️ Setting up frontend applications..."
+
+# Kiosk setup
+cd "$MAIN_DIR/kiosk"
+npm install
+npm run build
+
+# External display setup
+cd "$MAIN_DIR/external"
+npm install
+npm run build
+
+# 6. Configure Display Management
+log "🖥️ Setting up display configuration..."
+sudo tee /usr/local/bin/setup-displays << EOF
+#!/bin/bash
+sleep 5  # Wait for X server
+xrandr --output HDMI-1 --primary --mode 1920x1080 --pos 0x0
+xrandr --output HDMI-2 --mode 1920x1080 --pos 1920x0
+unclutter -idle 0.1 -root &  # Hide mouse cursor
+EOF
+
+sudo chmod +x /usr/local/bin/setup-displays
+
+# 7. Create Service Files
+log "🔧 Creating systemd services..."
+
+# Backend service
+sudo tee /etc/systemd/system/nqub-backend.service << EOF
+[Unit]
+Description=NQUB Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$MAIN_DIR/backend
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=$HOME/.Xauthority"
+Environment="PATH=$PATH:/usr/local/bin"
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python api_server.py & python main.py'
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_DIR/backend.log
+StandardError=append:$LOG_DIR/backend.error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Kiosk service
+sudo tee /etc/systemd/system/nqub-kiosk.service << EOF
+[Unit]
+Description=NQUB Kiosk Interface
+After=graphical.target
+
+[Service]
+Type=simple
+User=$USER
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=$HOME/.Xauthority"
+ExecStartPre=/usr/local/bin/setup-displays
+ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_DIR/kiosk.log
+StandardError=append:$LOG_DIR/kiosk.error.log
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+# External display service
+sudo tee /etc/systemd/system/nqub-external.service << EOF
+[Unit]
+Description=NQUB External Display
+After=graphical.target
+
+[Service]
+Type=simple
+User=$USER
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=$HOME/.Xauthority"
+ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=1920,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:5173
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_DIR/external.log
+StandardError=append:$LOG_DIR/external.error.log
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+# 8. Configure Autostart
+mkdir -p $HOME/.config/lxsession/LXDE-pi
+cat > $HOME/.config/lxsession/LXDE-pi/autostart << EOF
+@xset s off
+@xset -dpms
+@xset s noblank
+EOF
+
+# 9. Start Services
+log "🚀 Starting services..."
+sudo systemctl daemon-reload
+sudo systemctl enable nqub-backend nqub-kiosk nqub-external
+sudo systemctl start nqub-backend nqub-kiosk nqub-external
+
+log "✅ Installation complete!"
+log "📝 Log files are available in $LOG_DIR"
+log "📊 Check service status with: sudo systemctl status nqub-[backend|kiosk|external]"
