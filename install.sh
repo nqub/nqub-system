@@ -16,23 +16,19 @@ set -x  # Print commands
 
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
-# Use raspi-config for safe filesystem expansion
-sudo raspi-config --expand-rootfs || {
-    log "❌ Failed to expand filesystem"
-    exit 1
-}
-sudo raspi-config nonint do_spi 0 || {
-    log "❌ Failed to enable SPI"
-    exit 1
-}
-sudo raspi-config nonint do_serial 0 || {
-    log "❌ Failed to enable Serial Port"
-    exit 1
-}
 
-# 2. System Setup (unchanged until GitHub part)
-[Previous system setup parts remain the same until GitHub CLI setup]
+# Enable SPI and Serial if not already enabled
+log "Enabling SPI and Serial interfaces..."
+if ! grep -q "^dtparam=spi=on" /boot/config.txt; then
+    echo "dtparam=spi=on" | sudo tee -a /boot/config.txt
+fi
 
+if ! grep -q "^enable_uart=1" /boot/config.txt; then
+    echo "enable_uart=1" | sudo tee -a /boot/config.txt
+fi
+
+# 2. System Setup 
+log "📦 Setting up system directories..."
 #GitHub CLI setup
 log "🔑 Setting up GitHub CLI..."
 if ! command -v gh &> /dev/null; then
