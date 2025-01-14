@@ -167,14 +167,27 @@ sleep 5  # Wait for X server
 # Kill any existing unclutter processes
 pkill -f unclutter || true
 
+# Wait for X server to be fully ready
+while ! xrandr --current > /dev/null 2>&1; do
+    sleep 1
+done
+# Get available outputs
+OUTPUTS=$(xrandr --current | grep " connected" | cut -d" " -f1)
 
-# Configure displays
-xrandr --output HDMI-1 --primary --mode 1920x1080 --pos 0x0
-xrandr --output HDMI-2 --mode 1920x1080 --pos 1920x0
+# Configure first available output as primary
+PRIMARY=$(echo "$OUTPUTS" | head -n 1)
+if [ -n "$PRIMARY" ]; then
+    xrandr --output "$PRIMARY" --primary --mode 1920x1080 --pos 0x0
+fi
+
+# Configure second output if available
+SECONDARY=$(echo "$OUTPUTS" | sed -n '2p')
+if [ -n "$SECONDARY" ]; then
+    xrandr --output "$SECONDARY" --mode 1920x1080 --pos 1920x0
+fi
 
 # Start unclutter with proper process management
 unclutter -idle 0.1 -root &
-EOF
 
 sudo chmod +x /usr/local/bin/setup-displays
 
@@ -295,8 +308,8 @@ EOF
 sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
-After=graphical.target nqub-backend-api.service nqub-backend-main.service
-Requires=nqub-backend-api.service nqub-backend-main.service
+After=graphical.target nqub-backend-main.service
+Requires= nqub-backend-main.service
 
 [Service]
 Type=simple
@@ -304,12 +317,17 @@ User=$USER
 WorkingDirectory=$MAIN_DIR/external
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
-ExecStartPre=/bin/bash -c 'until curl -s http://localhost:5173 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
-ExecStart=$MAIN_DIR/external/start-server.sh
+Environment="XDG_RUNTIME_DIR=/run/user/\$(id -u)"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus"
+Environment="PORT=5173"
+ExecStart=/usr/bin/npm run dev
+ExecStop=/usr/bin/pkill -f "node.*external"
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
 StandardError=append:$LOG_DIR/external.error.log
+KillMode=mixed
+TimeoutStopSec=10
 
 [Install]
 WantedBy=graphical.target
