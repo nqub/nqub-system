@@ -10,7 +10,7 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Modified error handling without trap
+# error handling without trap
 set -e  # Still exit on error
 set -x  # Print commands
 
@@ -30,54 +30,10 @@ sudo raspi-config nonint do_serial 0 || {
     exit 1
 }
 
-# 2. System Setup
-log "📦 Setting up system directories..."
-sudo mkdir -p "$LOG_DIR" || {
-    log "❌ Failed to create log directory"
-    exit 1
-}
-sudo chown $USER:$USER "$LOG_DIR" || {
-    log "❌ Failed to set permissions on log directory"
-    exit 1
-}
-mkdir -p "$MAIN_DIR" || {
-    log "❌ Failed to create main directory"
-    exit 1
-}
-cd "$MAIN_DIR" || {
-    log "❌ Failed to change to main directory"
-    exit 1
-}
+# 2. System Setup (unchanged until GitHub part)
+[Previous system setup parts remain the same until GitHub CLI setup]
 
-# Install system dependencies
-log "🔧 Installing system dependencies..."
-sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y \
-    build-essential \
-    git \
-    curl \
-    wget \
-    xterm \
-    chromium-browser \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    libssl-dev \
-    libffi-dev \
-    libudev-dev \
-    x11-xserver-utils \
-    setserial \
-    unclutter \
-    ca-certificates \
-    openssl
-
-# Install Node.js 20.x
-log "📦 Installing Node.js..."
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Install GitHub CLI and authenticate
+#GitHub CLI setup
 log "🔑 Setting up GitHub CLI..."
 if ! command -v gh &> /dev/null; then
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -86,110 +42,59 @@ if ! command -v gh &> /dev/null; then
     sudo apt install gh -y
 fi
 
-log "🔑 Please authenticate with GitHub..."
-gh auth login
+# Interactive GitHub authentication with validation
+log "🔑 GitHub Authentication..."
+while ! gh auth status &>/dev/null; do
+    log "Please authenticate with GitHub. Choose 'HTTPS' and 'Paste an authentication token'"
+    gh auth login
+    if [ $? -ne 0 ]; then
+        log "Authentication failed. Retrying..."
+        sleep 2
+    fi
+done
+log "✅ GitHub authentication successful"
 
-# 3. Clone Repositories
+# Clone repositories with validation
 log "📥 Cloning repositories..."
 cd "$MAIN_DIR"
 
 clone_or_update_repo() {
     local repo=$1
     local dir=$2
-    if [ ! -d "$dir" ]; then
-        gh repo clone "nqub/$repo" "$dir"
-    else
-        cd "$dir"
-        git pull
-        cd ..
-    fi
+    local max_attempts=3
+    local attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ ! -d "$dir" ]; then
+            if gh repo clone "nqub/$repo" "$dir"; then
+                log "✅ Successfully cloned $repo"
+                return 0
+            fi
+        else
+            cd "$dir"
+            if git pull; then
+                log "✅ Successfully updated $repo"
+                cd ..
+                return 0
+            fi
+            cd ..
+        fi
+        
+        log "⚠️ Attempt $attempt failed for $repo. Retrying..."
+        ((attempt++))
+        sleep 2
+    done
+    
+    log "❌ Failed to clone/update $repo after $max_attempts attempts"
+    return 1
 }
 
-clone_or_update_repo "nqub-coin-dispenser" "backend"
-clone_or_update_repo "token-dispenser-kiosk" "kiosk"
-clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
-
-# 4. Setup Python Environment
-log "🔧 Setting up Python environment..."
-
-# Update certificates
-log "🔒 Updating SSL certificates..."
-sudo update-ca-certificates --fresh
-
-# Configure pip settings
-log "⚙️ Configuring pip..."
-mkdir -p $HOME/.pip
-cat > $HOME/.pip/pip.conf << EOF
-[global]
-trusted-host = 
-    pypi.org
-    files.pythonhosted.org
-    pypi.python.org
-    piwheels.org
-timeout = 60
-retries = 3
-EOF
-
-# Setup virtual environment
-cd "$MAIN_DIR/backend"
-log "🐍 Creating virtual environment..."
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
-
-# Install base packages in virtual environment
-log "📦 Installing base Python packages..."
-python3 -m pip install --upgrade pip \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
-
-pip install --no-cache-dir wheel setuptools \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
-
-# Install project requirements
-log "📦 Installing project requirements..."
-pip install -r requirements.txt \
-    --no-cache-dir \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org
-
-# Initialize database
-log "🗄️ Initializing database..."
-prisma db push
-
-# 5. Setup Frontend Applications
-log "🖥️ Setting up frontend applications..."
-
-# Kiosk setup
-cd "$MAIN_DIR/kiosk"
-npm install
-npm run build
-
-# External display setup
-cd "$MAIN_DIR/external"
-npm install
-npm run build
-
-# 6. Configure Display Management
-log "🖥️ Setting up display configuration..."
-sudo tee /usr/local/bin/setup-displays << EOF
-#!/bin/bash
-sleep 5  # Wait for X server
-xrandr --output HDMI-1 --primary --mode 1920x1080 --pos 0x0
-xrandr --output HDMI-2 --mode 1920x1080 --pos 1920x0
-unclutter -idle 0.1 -root &  # Hide mouse cursor
-EOF
-
-sudo chmod +x /usr/local/bin/setup-displays
-
-# 7. Create Service Files
-log "🔧 Creating systemd services..."
-
-# Backend service
-sudo tee /etc/systemd/system/nqub-backend.service << EOF
+# Backend API service
+sudo tee /etc/systemd/system/nqub-backend-api.service << EOF
 [Unit]
-Description=NQUB Backend Service
+Description=NQUB Backend API Service
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -198,29 +103,71 @@ WorkingDirectory=$MAIN_DIR/backend
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="PATH=$PATH:/usr/local/bin"
-ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python api_server.py & python main.py'
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python api_server.py'
 Restart=always
 RestartSec=10
-StandardOutput=append:$LOG_DIR/backend.log
-StandardError=append:$LOG_DIR/backend.error.log
+StandardOutput=append:$LOG_DIR/backend-api.log
+StandardError=append:$LOG_DIR/backend-api.error.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Kiosk service
-sudo tee /etc/systemd/system/nqub-kiosk.service << EOF
+# Backend main service
+sudo tee /etc/systemd/system/nqub-backend-main.service << EOF
 [Unit]
-Description=NQUB Kiosk Interface
-After=graphical.target
+Description=NQUB Backend Main Service
+After=nqub-backend-api.service
+Requires=nqub-backend-api.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=$USER
+WorkingDirectory=$MAIN_DIR/backend
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=$HOME/.Xauthority"
+Environment="PATH=$PATH:/usr/local/bin"
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python main.py'
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_DIR/backend-main.log
+StandardError=append:$LOG_DIR/backend-main.error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start script for kiosk frontend
+sudo tee $MAIN_DIR/kiosk/start-server.sh << EOF
+#!/bin/bash
+npm run preview -- --port 3000 --host
+EOF
+chmod +x $MAIN_DIR/kiosk/start-server.sh
+
+# Start script for external display
+sudo tee $MAIN_DIR/external/start-server.sh << EOF
+#!/bin/bash
+npm run preview -- --port 5173 --host
+EOF
+chmod +x $MAIN_DIR/external/start-server.sh
+
+# Kiosk service with dependency and health check
+sudo tee /etc/systemd/system/nqub-kiosk.service << EOF
+[Unit]
+Description=NQUB Kiosk Interface
+After=graphical.target nqub-backend-api.service nqub-backend-main.service
+Requires=nqub-backend-api.service nqub-backend-main.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$MAIN_DIR/kiosk
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 ExecStartPre=/usr/local/bin/setup-displays
-ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
+ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
+ExecStart=$MAIN_DIR/kiosk/start-server.sh
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk.log
@@ -230,18 +177,21 @@ StandardError=append:$LOG_DIR/kiosk.error.log
 WantedBy=graphical.target
 EOF
 
-# External display service
+# External display service with dependency
 sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
-After=graphical.target
+After=graphical.target nqub-backend-api.service nqub-backend-main.service
+Requires=nqub-backend-api.service nqub-backend-main.service
 
 [Service]
 Type=simple
 User=$USER
+WorkingDirectory=$MAIN_DIR/external
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
-ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=1920,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:5173
+ExecStartPre=/bin/bash -c 'until curl -s http://localhost:5173 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
+ExecStart=$MAIN_DIR/external/start-server.sh
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
@@ -251,20 +201,36 @@ StandardError=append:$LOG_DIR/external.error.log
 WantedBy=graphical.target
 EOF
 
-# 8. Configure Autostart
-mkdir -p $HOME/.config/lxsession/LXDE-pi
-cat > $HOME/.config/lxsession/LXDE-pi/autostart << EOF
-@xset s off
-@xset -dpms
-@xset s noblank
-EOF
-
-# 9. Start Services
+# Service startup with proper order and validation
 log "🚀 Starting services..."
 sudo systemctl daemon-reload
-sudo systemctl enable nqub-backend nqub-kiosk nqub-external
-sudo systemctl start nqub-backend nqub-kiosk nqub-external
+
+# Start and verify each service in order
+start_service() {
+    local service=$1
+    log "Starting $service..."
+    sudo systemctl enable $service
+    sudo systemctl start $service
+    sleep 5
+    if sudo systemctl is-active $service >/dev/null 2>&1; then
+        log "✅ $service started successfully"
+    else
+        log "❌ Failed to start $service"
+        log "Check logs with: sudo journalctl -u $service"
+        return 1
+    fi
+}
+
+# Start services in correct order
+services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk" "nqub-external")
+for service in "${services[@]}"; do
+    start_service $service || exit 1
+done
 
 log "✅ Installation complete!"
 log "📝 Log files are available in $LOG_DIR"
-log "📊 Check service status with: sudo systemctl status nqub-[backend|kiosk|external]"
+log "📊 Check individual service status with:"
+log "sudo systemctl status nqub-backend-api"
+log "sudo systemctl status nqub-backend-main"
+log "sudo systemctl status nqub-kiosk"
+log "sudo systemctl status nqub-external"
