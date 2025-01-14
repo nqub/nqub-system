@@ -8,9 +8,11 @@ VENV_DIR="$MAIN_DIR/venv"
 # Logger function
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+    # Also log to a main install log file
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$LOG_DIR/install.log"
 }
 
-# error handling without trap
+# Error handling without trap
 set -e  # Still exit on error
 set -x  # Print commands
 
@@ -29,26 +31,15 @@ fi
 
 # 2. System Setup 
 log "📦 Setting up system directories..."
-#create necessary directories
+# Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
-sudo chown $USER:$USER "$LOG_DIR"
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk,external}.error.log
+sudo chown -R $USER:$USER "$LOG_DIR"
+chmod 755 "$LOG_DIR"
+chmod 644 "$LOG_DIR"/*.log
+
 mkdir -p "$MAIN_DIR"
-
-## GitHub CLI setup
-log "🔑 Setting up GitHub CLI..."
-if ! command -v gh &> /dev/null; then
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt update
-    sudo apt install gh -y
-fi
-
-# Install Node.js and npm if not already installed
-log "📦 Installing Node.js and npm..."
-if ! command -v node &> /dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejs
-fi
 
 # Install system dependencies
 log "📦 Installing system dependencies..."
@@ -71,6 +62,22 @@ sudo apt update && sudo apt install -y \
     unclutter \
     ca-certificates \
     openssl
+
+## GitHub CLI setup
+log "🔑 Setting up GitHub CLI..."
+if ! command -v gh &> /dev/null; then
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt update
+    sudo apt install gh -y
+fi
+
+# Install Node.js and npm if not already installed
+log "📦 Installing Node.js and npm..."
+if ! command -v node &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt install -y nodejs
+fi
 
 # Interactive GitHub authentication with validation
 log "🔑 GitHub Authentication..."
@@ -118,6 +125,54 @@ clone_or_update_repo() {
     log "❌ Failed to clone/update $repo after $max_attempts attempts"
     return 1
 }
+
+# Actually clone the repositories
+clone_or_update_repo "nqub-coin-dispenser" "backend"
+clone_or_update_repo "token-dispenser-kiosk" "kiosk"
+clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
+
+# Setup Python Environment
+log "🐍 Setting up Python environment..."
+cd "$MAIN_DIR/backend"
+python3 -m venv "$VENV_DIR"
+source "$VENV_DIR/bin/activate"
+
+# Install project requirements
+log "📦 Installing Python requirements..."
+pip install -r requirements.txt
+
+# Setup frontend applications
+log "🖥️ Setting up frontend applications..."
+cd "$MAIN_DIR/kiosk"
+npm install
+npm run build
+
+cd "$MAIN_DIR/external"
+npm install
+npm run build
+
+# Configure Display Management
+log "🖥️ Setting up display configuration..."
+sudo tee /usr/local/bin/setup-displays << EOF
+#!/bin/bash
+sleep 5  # Wait for X server
+xrandr --output HDMI-1 --primary --mode 1920x1080 --pos 0x0
+xrandr --output HDMI-2 --mode 1920x1080 --pos 1920x0
+unclutter -idle 0.1 -root &  # Hide mouse cursor
+EOF
+
+sudo chmod +x /usr/local/bin/setup-displays
+
+# Add to X server startup
+sudo tee -a /etc/X11/xinit/xinitrc << EOF
+/usr/local/bin/setup-displays
+EOF
+
+# Configure X server to start on boot
+sudo raspi-config nonint do_boot_behaviour B4
+
+# Create Service Files
+log "🔧 Creating systemd services..."
 
 # Backend API service
 sudo tee /etc/systemd/system/nqub-backend-api.service << EOF
@@ -168,20 +223,6 @@ StandardError=append:$LOG_DIR/backend-main.error.log
 WantedBy=multi-user.target
 EOF
 
-# Start script for kiosk frontend
-sudo tee $MAIN_DIR/kiosk/start-server.sh << EOF
-#!/bin/bash
-npm run preview -- --port 3000 --host
-EOF
-chmod +x $MAIN_DIR/kiosk/start-server.sh
-
-# Start script for external display
-sudo tee $MAIN_DIR/external/start-server.sh << EOF
-#!/bin/bash
-npm run preview -- --port 5173 --host
-EOF
-chmod +x $MAIN_DIR/external/start-server.sh
-
 # Kiosk service with dependency and health check
 sudo tee /etc/systemd/system/nqub-kiosk.service << EOF
 [Unit]
@@ -196,8 +237,7 @@ WorkingDirectory=$MAIN_DIR/kiosk
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 ExecStartPre=/usr/local/bin/setup-displays
-ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
-ExecStart=$MAIN_DIR/kiosk/start-server.sh
+ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk.log
@@ -220,8 +260,7 @@ User=$USER
 WorkingDirectory=$MAIN_DIR/external
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
-ExecStartPre=/bin/bash -c 'until curl -s http://localhost:5173 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
-ExecStart=$MAIN_DIR/external/start-server.sh
+ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=1920,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:5173
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
@@ -230,6 +269,13 @@ StandardError=append:$LOG_DIR/external.error.log
 [Install]
 WantedBy=graphical.target
 EOF
+
+# Start npm servers
+log "🚀 Starting npm servers..."
+cd "$MAIN_DIR/kiosk"
+npm run preview -- --port 3000 --host &
+cd "$MAIN_DIR/external"
+npm run preview -- --port 5173 --host &
 
 # Service startup with proper order and validation
 log "🚀 Starting services..."
@@ -264,3 +310,6 @@ log "sudo systemctl status nqub-backend-api"
 log "sudo systemctl status nqub-backend-main"
 log "sudo systemctl status nqub-kiosk"
 log "sudo systemctl status nqub-external"
+
+log "🔄 Please reboot the system to complete the installation:"
+log "sudo reboot"
