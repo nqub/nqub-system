@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# Initial setup
+log "📦 Setting up system directories..."
+sudo mkdir -p "$LOG_DIR"
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
+sudo chown -R $USER:$USER "$LOG_DIR"
+sudo chmod 755 "$LOG_DIR"
+sudo chmod 644 "$LOG_DIR"/*.log
+
+mkdir -p "$MAIN_DIR"
+
 # Logger function (defined first so it's available throughout the script)
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
@@ -15,16 +26,7 @@ VENV_DIR="$MAIN_DIR/venv"
 set -e  # Exit on error
 set -x  # Print commands
 
-# Initial setup
-log "📦 Setting up system directories..."
-sudo mkdir -p "$LOG_DIR"
-sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
-sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
-sudo chown -R $USER:$USER "$LOG_DIR"
-sudo chmod 755 "$LOG_DIR"
-sudo chmod 644 "$LOG_DIR"/*.log
 
-mkdir -p "$MAIN_DIR"
 
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
