@@ -29,7 +29,12 @@ fi
 
 # 2. System Setup 
 log "📦 Setting up system directories..."
-#GitHub CLI setup
+#create necessary directories
+sudo mkdir -p "$LOG_DIR"
+sudo chown $USER:$USER "$LOG_DIR"
+mkdir -p "$MAIN_DIR"
+
+## GitHub CLI setup
 log "🔑 Setting up GitHub CLI..."
 if ! command -v gh &> /dev/null; then
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -37,6 +42,35 @@ if ! command -v gh &> /dev/null; then
     sudo apt update
     sudo apt install gh -y
 fi
+
+# Install Node.js and npm if not already installed
+log "📦 Installing Node.js and npm..."
+if ! command -v node &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt install -y nodejs
+fi
+
+# Install system dependencies
+log "📦 Installing system dependencies..."
+sudo apt update && sudo apt install -y \
+    build-essential \
+    git \
+    curl \
+    wget \
+    xterm \
+    chromium-browser \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    libssl-dev \
+    libffi-dev \
+    libudev-dev \
+    x11-xserver-utils \
+    setserial \
+    unclutter \
+    ca-certificates \
+    openssl
 
 # Interactive GitHub authentication with validation
 log "🔑 GitHub Authentication..."
