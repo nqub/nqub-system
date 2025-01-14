@@ -1,31 +1,30 @@
 #!/bin/bash
 
+# Logger function (defined first so it's available throughout the script)
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$LOG_DIR/install.log"
+}
+
 # Configuration
 MAIN_DIR="$HOME/nqub-system"
 LOG_DIR="/var/log/nqub"
 VENV_DIR="$MAIN_DIR/venv"
 
+# Error handling
+set -e  # Exit on error
+set -x  # Print commands
+
+# Initial setup
 log "📦 Setting up system directories..."
-# Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
 sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
 sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
 sudo chown -R $USER:$USER "$LOG_DIR"
-chmod 755 "$LOG_DIR"
-chmod 644 "$LOG_DIR"/*.log
+sudo chmod 755 "$LOG_DIR"
+sudo chmod 644 "$LOG_DIR"/*.log
 
 mkdir -p "$MAIN_DIR"
-
-# Logger function
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
-    # Also log to a main install log file
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$LOG_DIR/install.log"
-}
-
-# Error handling without trap
-set -e  # Still exit on error
-set -x  # Print commands
 
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
@@ -41,9 +40,6 @@ if ! grep -q "^enable_uart=1" /boot/config.txt; then
 fi
 
 # 2. System Setup 
-
-
-# Install system dependencies
 log "📦 Installing system dependencies..."
 sudo apt update && sudo apt install -y \
     build-essential \
@@ -65,7 +61,16 @@ sudo apt update && sudo apt install -y \
     ca-certificates \
     openssl
 
-## GitHub CLI setup
+# Verify system dependencies
+log "Verifying system dependencies..."
+for cmd in xrandr chromium-browser npm node python3 git curl wget; do
+    if ! command -v $cmd &> /dev/null; then
+        log "❌ Required command $cmd not found"
+        exit 1
+    fi
+done
+
+# GitHub CLI setup
 log "🔑 Setting up GitHub CLI..."
 if ! command -v gh &> /dev/null; then
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -128,7 +133,7 @@ clone_or_update_repo() {
     return 1
 }
 
-# Actually clone the repositories
+# Clone repositories
 clone_or_update_repo "nqub-coin-dispenser" "backend"
 clone_or_update_repo "token-dispenser-kiosk" "kiosk"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
@@ -146,7 +151,7 @@ pip install -r requirements.txt
 # Generate Prisma client
 log "🗄️ Generating Prisma client..."
 prisma generate
-prisma db push  
+prisma db push
 
 # Setup frontend applications
 log "🖥️ Setting up frontend applications..."
@@ -156,7 +161,6 @@ npm run build
 
 cd "$MAIN_DIR/external"
 npm install
-npm run build
 
 # Configure Display Management
 log "🖥️ Setting up display configuration..."
@@ -168,11 +172,24 @@ sleep 5  # Wait for X server
 pkill -f unclutter || true
 
 # Wait for X server to be fully ready
+MAX_ATTEMPTS=30
+ATTEMPTS=0
 while ! xrandr --current > /dev/null 2>&1; do
     sleep 1
+    ATTEMPTS=$((ATTEMPTS + 1))
+    if [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; then
+        echo "Failed to detect X server after $MAX_ATTEMPTS attempts"
+        exit 1
+    fi
 done
+
 # Get available outputs
 OUTPUTS=$(xrandr --current | grep " connected" | cut -d" " -f1)
+
+if [ -z "$OUTPUTS" ]; then
+    echo "No displays detected"
+    exit 1
+fi
 
 # Configure first available output as primary
 PRIMARY=$(echo "$OUTPUTS" | head -n 1)
@@ -188,11 +205,13 @@ fi
 
 # Start unclutter with proper process management
 unclutter -idle 0.1 -root &
+EOF
 
 sudo chmod +x /usr/local/bin/setup-displays
 
 # Add to X server startup
-sudo tee -a /etc/X11/xinit/xinitrc << EOF
+sudo tee -a /etc/X11/xinit/xinitrc << 'EOF'
+#!/bin/bash
 /usr/local/bin/setup-displays
 EOF
 
@@ -264,6 +283,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/kiosk
 Environment="PORT=3000"
+Environment="NODE_ENV=production"
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=10
@@ -271,6 +291,7 @@ StandardOutput=append:$LOG_DIR/kiosk-server.log
 StandardError=append:$LOG_DIR/kiosk-server.error.log
 TimeoutStopSec=10
 KillMode=mixed
+ExecStop=/usr/bin/pkill -f "node.*kiosk"
 
 [Install]
 WantedBy=multi-user.target
@@ -288,11 +309,13 @@ Type=simple
 User=$USER
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
+Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
 ExecStartPre=/usr/local/bin/setup-displays
 ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
 ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
 ExecStop=/usr/bin/pkill -f chromium
 ExecStop=/usr/bin/pkill -f unclutter
+ExecStop=/usr/bin/pkill -f setup-displays
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk-browser.log
@@ -309,7 +332,7 @@ sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
 After=graphical.target nqub-backend-main.service
-Requires= nqub-backend-main.service
+Requires=nqub-backend-main.service
 
 [Service]
 Type=simple
@@ -317,11 +340,13 @@ User=$USER
 WorkingDirectory=$MAIN_DIR/external
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
-Environment="XDG_RUNTIME_DIR=/run/user/\$(id -u)"
-Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus"
+Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus"
 Environment="PORT=5173"
+Environment="NODE_ENV=development"
 ExecStart=/usr/bin/npm run dev
 ExecStop=/usr/bin/pkill -f "node.*external"
+ExecStop=/usr/bin/pkill -f "vite"
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
@@ -341,6 +366,15 @@ sudo systemctl daemon-reload
 start_service() {
     local service=$1
     log "Starting $service..."
+    
+    # Check if dependent services are running
+    for dep in $(systemctl show -p Requires,Wants $service | cut -d= -f2); do
+        if ! systemctl is-active $dep >/dev/null 2>&1; then
+            log "⚠️ Required dependency $dep is not running"
+            return 1
+        fi
+    done
+    
     sudo systemctl enable $service
     sudo systemctl start $service
     sleep 5
