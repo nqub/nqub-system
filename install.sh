@@ -249,7 +249,7 @@ EOF
 sudo tee /etc/systemd/system/nqub-backend-main.service << EOF
 [Unit]
 Description=NQUB Backend Main Service
-After=nqub-backend-api.service
+After=network.target nqub-backend-api.service
 StartLimitIntervalSec=0
 
 [Service]
