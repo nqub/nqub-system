@@ -141,6 +141,11 @@ source "$VENV_DIR/bin/activate"
 log "📦 Installing Python requirements..."
 pip install -r requirements.txt
 
+# Generate Prisma client
+log "🗄️ Generating Prisma client..."
+prisma generate
+prisma db push  
+
 # Setup frontend applications
 log "🖥️ Setting up frontend applications..."
 cd "$MAIN_DIR/kiosk"
