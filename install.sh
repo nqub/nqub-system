@@ -377,7 +377,7 @@ start_service() {
     
     # Check if dependent services are running
     for dep in $(systemctl show -p Requires,Wants $service | cut -d= -f2); do
-        if ! systemctl is-active $dep >/dev/null 2>&1; then
+        if [ "$dep" != "-.mount" ] && ! systemctl is-active $dep >/dev/null 2>&1; then
             log "⚠️ Required dependency $dep is not running"
             return 1
         fi
