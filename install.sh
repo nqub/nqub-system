@@ -311,6 +311,7 @@ Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
 ExecStartPre=/usr/local/bin/setup-displays
 ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
+ExecStartPre=/usr/bin/pkill -f unclutter
 ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
 ExecStop=/usr/bin/pkill -f chromium
 ExecStop=/usr/bin/pkill -f unclutter
