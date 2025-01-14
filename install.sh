@@ -1,13 +1,19 @@
 #!/bin/bash
 
 # Initial setup
+# Configuration
+MAIN_DIR="$HOME/nqub-system"
+LOG_DIR="/var/log/nqub"
+VENV_DIR="$MAIN_DIR/venv"
+
 log "📦 Setting up system directories..."
+# Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
 sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
 sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
 sudo chown -R $USER:$USER "$LOG_DIR"
-sudo chmod 755 "$LOG_DIR"
-sudo chmod 644 "$LOG_DIR"/*.log
+chmod 755 "$LOG_DIR"
+chmod 644 "$LOG_DIR"/*.log
 
 mkdir -p "$MAIN_DIR"
 
