@@ -33,8 +33,8 @@ fi
 log "📦 Setting up system directories..."
 # Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
-sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk,external}.log
-sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk,external}.error.log
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
 sudo chown -R $USER:$USER "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 chmod 644 "$LOG_DIR"/*.log
@@ -223,31 +223,53 @@ StandardError=append:$LOG_DIR/backend-main.error.log
 WantedBy=multi-user.target
 EOF
 
-# Kiosk service with dependency and health check
-sudo tee /etc/systemd/system/nqub-kiosk.service << EOF
+# Kiosk server service
+sudo tee /etc/systemd/system/nqub-kiosk-server.service << EOF
 [Unit]
-Description=NQUB Kiosk Interface
-After=graphical.target nqub-backend-api.service nqub-backend-main.service
+Description=NQUB Kiosk Server
+After=network.target nqub-backend-api.service nqub-backend-main.service
 Requires=nqub-backend-api.service nqub-backend-main.service
 
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/kiosk
+Environment="PORT=3000"
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_DIR/kiosk-server.log
+StandardError=append:$LOG_DIR/kiosk-server.error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Kiosk browser service
+sudo tee /etc/systemd/system/nqub-kiosk-browser.service << EOF
+[Unit]
+Description=NQUB Kiosk Browser
+After=graphical.target nqub-kiosk-server.service
+Requires=nqub-kiosk-server.service
+
+[Service]
+Type=simple
+User=$USER
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 ExecStartPre=/usr/local/bin/setup-displays
+ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
 ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
 Restart=always
 RestartSec=10
-StandardOutput=append:$LOG_DIR/kiosk.log
-StandardError=append:$LOG_DIR/kiosk.error.log
+StandardOutput=append:$LOG_DIR/kiosk-browser.log
+StandardError=append:$LOG_DIR/kiosk-browser.error.log
 
 [Install]
 WantedBy=graphical.target
 EOF
 
-# External display service with dependency
+# External display service
 sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
@@ -260,7 +282,8 @@ User=$USER
 WorkingDirectory=$MAIN_DIR/external
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
-ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=1920,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:5173
+ExecStartPre=/bin/bash -c 'until curl -s http://localhost:5173 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
+ExecStart=$MAIN_DIR/external/start-server.sh
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/external.log
@@ -269,13 +292,6 @@ StandardError=append:$LOG_DIR/external.error.log
 [Install]
 WantedBy=graphical.target
 EOF
-
-# Start npm servers
-log "🚀 Starting npm servers..."
-cd "$MAIN_DIR/kiosk"
-npm run preview -- --port 3000 --host &
-cd "$MAIN_DIR/external"
-npm run preview -- --port 5173 --host &
 
 # Service startup with proper order and validation
 log "🚀 Starting services..."
@@ -298,7 +314,7 @@ start_service() {
 }
 
 # Start services in correct order
-services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk" "nqub-external")
+services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk-server" "nqub-kiosk-browser" "nqub-external")
 for service in "${services[@]}"; do
     start_service $service || exit 1
 done
@@ -306,10 +322,11 @@ done
 log "✅ Installation complete!"
 log "📝 Log files are available in $LOG_DIR"
 log "📊 Check individual service status with:"
-log "sudo systemctl status nqub-backend-api"
-log "sudo systemctl status nqub-backend-main"
-log "sudo systemctl status nqub-kiosk"
-log "sudo systemctl status nqub-external"
+log "sudo journalctl -u nqub-backend-api"
+log "sudo journalctl -u nqub-backend-main"
+log "sudo journalctl -u nqub-kiosk-server"
+log "sudo journalctl -u nqub-kiosk-browser"
+log "sudo journalctl -u nqub-external"
 
 log "🔄 Please reboot the system to complete the installation:"
 log "sudo reboot"
