@@ -1,42 +1,53 @@
 #!/bin/bash
 
-# Exit on error, print commands
-set -e
-set -x
-
 # Configuration
 MAIN_DIR="$HOME/nqub-system"
 LOG_DIR="/var/log/nqub"
 VENV_DIR="$MAIN_DIR/venv"
-
-# Error handling
-handle_error() {
-    local line_no=$1
-    local error_code=$2
-    echo "❌ Error occurred at line $line_no (Exit code: $error_code)"
-    echo "Please check the logs for more details"
-    exit 1
-}
-trap 'handle_error $LINENO $?' ERR
 
 # Logger function
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
+# Modified error handling without trap
+set -e  # Still exit on error
+set -x  # Print commands
+
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
 # Use raspi-config for safe filesystem expansion
-sudo raspi-config --expand-rootfs
-sudo raspi-config nonint do_spi 0      # Enable SPI
-sudo raspi-config nonint do_serial 0    # Enable Serial Port
+sudo raspi-config --expand-rootfs || {
+    log "❌ Failed to expand filesystem"
+    exit 1
+}
+sudo raspi-config nonint do_spi 0 || {
+    log "❌ Failed to enable SPI"
+    exit 1
+}
+sudo raspi-config nonint do_serial 0 || {
+    log "❌ Failed to enable Serial Port"
+    exit 1
+}
 
 # 2. System Setup
 log "📦 Setting up system directories..."
-sudo mkdir -p "$LOG_DIR"
-sudo chown $USER:$USER "$LOG_DIR"
-mkdir -p "$MAIN_DIR"
-cd "$MAIN_DIR"
+sudo mkdir -p "$LOG_DIR" || {
+    log "❌ Failed to create log directory"
+    exit 1
+}
+sudo chown $USER:$USER "$LOG_DIR" || {
+    log "❌ Failed to set permissions on log directory"
+    exit 1
+}
+mkdir -p "$MAIN_DIR" || {
+    log "❌ Failed to create main directory"
+    exit 1
+}
+cd "$MAIN_DIR" || {
+    log "❌ Failed to change to main directory"
+    exit 1
+}
 
 # Install system dependencies
 log "🔧 Installing system dependencies..."
