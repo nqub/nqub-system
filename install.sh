@@ -259,7 +259,7 @@ WorkingDirectory=$MAIN_DIR/backend
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="PATH=$PATH:/usr/local/bin"
-ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python main.py'
+ExecStart=/bin/bash -c 'source /home/nqub/nqub-system/venv/bin/activate && python main.py'
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/backend-main.log
