@@ -160,12 +160,20 @@ npm run build
 
 # Configure Display Management
 log "🖥️ Setting up display configuration..."
-sudo tee /usr/local/bin/setup-displays << EOF
+sudo tee /usr/local/bin/setup-displays << 'EOF'
 #!/bin/bash
 sleep 5  # Wait for X server
+
+# Kill any existing unclutter processes
+pkill -f unclutter || true
+
+
+# Configure displays
 xrandr --output HDMI-1 --primary --mode 1920x1080 --pos 0x0
 xrandr --output HDMI-2 --mode 1920x1080 --pos 1920x0
-unclutter -idle 0.1 -root &  # Hide mouse cursor
+
+# Start unclutter with proper process management
+unclutter -idle 0.1 -root &
 EOF
 
 sudo chmod +x /usr/local/bin/setup-displays
@@ -200,6 +208,7 @@ Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/backend-api.log
 StandardError=append:$LOG_DIR/backend-api.error.log
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -210,7 +219,6 @@ sudo tee /etc/systemd/system/nqub-backend-main.service << EOF
 [Unit]
 Description=NQUB Backend Main Service
 After=nqub-backend-api.service
-Requires=nqub-backend-api.service
 StartLimitIntervalSec=0
 
 [Service]
@@ -225,6 +233,7 @@ Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/backend-main.log
 StandardError=append:$LOG_DIR/backend-main.error.log
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -247,6 +256,8 @@ Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk-server.log
 StandardError=append:$LOG_DIR/kiosk-server.error.log
+TimeoutStopSec=10
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target
@@ -267,10 +278,14 @@ Environment="XAUTHORITY=$HOME/.Xauthority"
 ExecStartPre=/usr/local/bin/setup-displays
 ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
 ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
+ExecStop=/usr/bin/pkill -f chromium
+ExecStop=/usr/bin/pkill -f unclutter
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/kiosk-browser.log
 StandardError=append:$LOG_DIR/kiosk-browser.error.log
+KillMode=mixed
+TimeoutStopSec=5
 
 [Install]
 WantedBy=graphical.target
