@@ -5,6 +5,17 @@ MAIN_DIR="$HOME/nqub-system"
 LOG_DIR="/var/log/nqub"
 VENV_DIR="$MAIN_DIR/venv"
 
+log "📦 Setting up system directories..."
+# Create necessary directories and log files
+sudo mkdir -p "$LOG_DIR"
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
+sudo chown -R $USER:$USER "$LOG_DIR"
+chmod 755 "$LOG_DIR"
+chmod 644 "$LOG_DIR"/*.log
+
+mkdir -p "$MAIN_DIR"
+
 # Logger function
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
@@ -30,16 +41,7 @@ if ! grep -q "^enable_uart=1" /boot/config.txt; then
 fi
 
 # 2. System Setup 
-log "📦 Setting up system directories..."
-# Create necessary directories and log files
-sudo mkdir -p "$LOG_DIR"
-sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
-sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
-sudo chown -R $USER:$USER "$LOG_DIR"
-chmod 755 "$LOG_DIR"
-chmod 644 "$LOG_DIR"/*.log
 
-mkdir -p "$MAIN_DIR"
 
 # Install system dependencies
 log "📦 Installing system dependencies..."
