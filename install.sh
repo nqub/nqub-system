@@ -281,8 +281,6 @@ Requires=nqub-backend-api.service nqub-backend-main.service
 Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/kiosk
-Environment="PORT=3000"
-Environment="NODE_ENV=production"
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=10
@@ -305,23 +303,24 @@ Requires=nqub-kiosk-server.service
 
 [Service]
 Type=simple
-User=$USER
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=$HOME/.Xauthority"
-Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
+User=nqub
+ExecStartPre=/bin/sleep 10
 ExecStartPre=/usr/local/bin/setup-displays
-ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null || [ $? -eq 7 ]; do sleep 1; done'
-ExecStartPre=/usr/bin/pkill -f unclutter
-ExecStart=/usr/bin/chromium-browser --kiosk --disable-restore-session-state --window-position=0,0 --noerrdialogs --disable-infobars --no-first-run --disable-features=TranslateUI --disable-session-crashed-bubble http://localhost:3000
-ExecStop=/usr/bin/pkill -f chromium
-ExecStop=/usr/bin/pkill -f unclutter
-ExecStop=/usr/bin/pkill -f setup-displays
-Restart=always
-RestartSec=10
-StandardOutput=append:$LOG_DIR/kiosk-browser.log
-StandardError=append:$LOG_DIR/kiosk-browser.error.log
-KillMode=mixed
-TimeoutStopSec=5
+ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null 2>&1; do sleep 2; done'
+ExecStart=/usr/bin/chromium-browser \
+    --kiosk \
+    --disable-restore-session-state \
+    --window-position=0,0 \
+    --noerrdialogs \
+    --disable-infobars \
+    --no-first-run \
+    --disable-features=TranslateUI \
+    --disable-session-crashed-bubble \
+    http://localhost:3000
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/var/log/nqub/kiosk-browser.log
+StandardError=append:/var/log/nqub/kiosk-browser.error.log
 
 [Install]
 WantedBy=graphical.target
@@ -336,23 +335,14 @@ Requires=nqub-backend-main.service
 
 [Service]
 Type=simple
-User=$USER
-WorkingDirectory=$MAIN_DIR/external
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=$HOME/.Xauthority"
-Environment="XDG_RUNTIME_DIR=/run/user/$(id -u)"
-Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus"
-Environment="PORT=5173"
-Environment="NODE_ENV=development"
+User=nqub
+WorkingDirectory=/home/nqub/nqub-system/external
+ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/npm run dev
-ExecStop=/usr/bin/pkill -f "node.*external"
-ExecStop=/usr/bin/pkill -f "vite"
 Restart=always
 RestartSec=10
-StandardOutput=append:$LOG_DIR/external.log
-StandardError=append:$LOG_DIR/external.error.log
-KillMode=mixed
-TimeoutStopSec=10
+StandardOutput=append:/var/log/nqub/external.log
+StandardError=append:/var/log/nqub/external.error.log
 
 [Install]
 WantedBy=graphical.target
