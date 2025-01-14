@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Initial setup
 # Configuration
 MAIN_DIR="$HOME/nqub-system"
 LOG_DIR="/var/log/nqub"
 VENV_DIR="$MAIN_DIR/venv"
 
-log "📦 Setting up system directories..."
 # Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
 sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
@@ -23,16 +21,9 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | sudo tee -a "$LOG_DIR/install.log"
 }
 
-# Configuration
-MAIN_DIR="$HOME/nqub-system"
-LOG_DIR="/var/log/nqub"
-VENV_DIR="$MAIN_DIR/venv"
-
 # Error handling
 set -e  # Exit on error
 set -x  # Print commands
-
-
 
 # 1. Initial RPi4 Setup
 log "🔧 Configuring Raspberry Pi..."
