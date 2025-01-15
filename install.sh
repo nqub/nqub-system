@@ -6,6 +6,7 @@ LOG_DIR="/var/log/nqub"
 VENV_DIR="$MAIN_DIR/venv"
 
 # Create necessary directories and log files
+log "📁 Creating directories and log files..."
 sudo mkdir -p "$LOG_DIR"
 sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,external}.log
 sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,external}.error.log
@@ -38,7 +39,28 @@ if ! grep -q "^enable_uart=1" /boot/config.txt; then
     echo "enable_uart=1" | sudo tee -a /boot/config.txt
 fi
 
-# 2. System Setup 
+# 2. Setup USB Permissions
+log "🔧 Setting up USB permissions..."
+# Add current user to dialout group if not already in it
+if ! groups $USER | grep &>/dev/null '\bdialout\b'; then
+    sudo usermod -a -G dialout $USER
+    log "✅ Added user $USER to dialout group"
+else
+    log "User $USER is already in dialout group"
+fi
+
+# Create udev rule for USB devices
+sudo tee /etc/udev/rules.d/99-usb-serial.rules << EOF
+KERNEL=="ttyUSB[0-1]", GROUP="dialout", MODE="0660"
+EOF
+
+# Reload udev rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+log "✅ USB permissions configured"
+
+# 3. System Dependencies
 log "📦 Installing system dependencies..."
 sudo apt update && sudo apt install -y \
     build-essential \
@@ -69,7 +91,7 @@ for cmd in xrandr chromium-browser npm node python3 git curl wget; do
     fi
 done
 
-# GitHub CLI setup
+# 4. GitHub CLI setup
 log "🔑 Setting up GitHub CLI..."
 if ! command -v gh &> /dev/null; then
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -97,7 +119,7 @@ while ! gh auth status &>/dev/null; do
 done
 log "✅ GitHub authentication successful"
 
-# Clone repositories with validation
+# 5. Clone repositories with validation
 log "📥 Cloning repositories..."
 cd "$MAIN_DIR"
 
