@@ -161,62 +161,6 @@ npm run build
 cd "$MAIN_DIR/external"
 npm install
 
-# Configure Display Management
-log "🖥️ Setting up display configuration..."
-sudo tee /usr/local/bin/setup-displays << 'EOF'
-#!/bin/bash
-sleep 5  # Wait for X server
-
-# Kill any existing unclutter processes
-pkill -f unclutter || true
-
-# Wait for X server to be fully ready
-MAX_ATTEMPTS=30
-ATTEMPTS=0
-while ! xrandr --current > /dev/null 2>&1; do
-    sleep 1
-    ATTEMPTS=$((ATTEMPTS + 1))
-    if [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; then
-        echo "Failed to detect X server after $MAX_ATTEMPTS attempts"
-        exit 1
-    fi
-done
-
-# Get available outputs
-OUTPUTS=$(xrandr --current | grep " connected" | cut -d" " -f1)
-
-if [ -z "$OUTPUTS" ]; then
-    echo "No displays detected"
-    exit 1
-fi
-
-# Configure first available output as primary
-PRIMARY=$(echo "$OUTPUTS" | head -n 1)
-if [ -n "$PRIMARY" ]; then
-    xrandr --output "$PRIMARY" --primary --mode 1920x1080 --pos 0x0
-fi
-
-# Configure second output if available
-SECONDARY=$(echo "$OUTPUTS" | sed -n '2p')
-if [ -n "$SECONDARY" ]; then
-    xrandr --output "$SECONDARY" --mode 1920x1080 --pos 1920x0
-fi
-
-# Start unclutter with proper process management
-unclutter -idle 0.1 -root &
-EOF
-
-sudo chmod +x /usr/local/bin/setup-displays
-
-# Add to X server startup
-sudo tee -a /etc/X11/xinit/xinitrc << 'EOF'
-#!/bin/bash
-/usr/local/bin/setup-displays
-EOF
-
-# Configure X server to start on boot
-sudo raspi-config nonint do_boot_behaviour B4
-
 # Create Service Files
 log "🔧 Creating systemd services..."
 
@@ -250,7 +194,8 @@ sudo tee /etc/systemd/system/nqub-backend-main.service << EOF
 [Unit]
 Description=NQUB Backend Main Service
 After=network.target nqub-backend-api.service
-StartLimitIntervalSec=0
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -259,12 +204,12 @@ WorkingDirectory=$MAIN_DIR/backend
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="PATH=$PATH:/usr/local/bin"
-ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate  && python main.py'
-Restart=always
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python main.py'
+Restart=on-failure
 RestartSec=10
+TimeoutStopSec=10
 StandardOutput=append:$LOG_DIR/backend-main.log
 StandardError=append:$LOG_DIR/backend-main.error.log
-TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -282,13 +227,12 @@ Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/kiosk
 ExecStart=/usr/bin/npm run start
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
 StandardOutput=append:$LOG_DIR/kiosk-server.log
 StandardError=append:$LOG_DIR/kiosk-server.error.log
-TimeoutStopSec=10
-KillMode=mixed
-ExecStop=/usr/bin/pkill -f "node.*kiosk"
 
 [Install]
 WantedBy=multi-user.target
@@ -306,17 +250,17 @@ Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/external
 ExecStart=/usr/bin/npm run dev
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
 StandardOutput=append:$LOG_DIR/external.log
 StandardError=append:$LOG_DIR/external.error.log
-TimeoutStopSec=10
-KillMode=mixed
-ExecStop=/usr/bin/pkill -f "node.*external"
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
 
 # Service startup with proper order and validation
 log "🚀 Starting services..."
