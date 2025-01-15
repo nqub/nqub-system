@@ -226,13 +226,12 @@ Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/kiosk
 ExecStart=/usr/bin/npm run start
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
 StandardOutput=append:$LOG_DIR/kiosk-server.log
 StandardError=append:$LOG_DIR/kiosk-server.error.log
-TimeoutStopSec=10
-KillMode=mixed
-ExecStop=/usr/bin/pkill -f "node.*kiosk"
 
 [Install]
 WantedBy=multi-user.target
@@ -249,14 +248,13 @@ Requires=nqub-backend-main.service
 Type=simple
 User=$USER
 WorkingDirectory=$MAIN_DIR/external
-ExecStart=/usr/bin/npm run dev
-Restart=always
-RestartSec=10
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=3
 StandardOutput=append:$LOG_DIR/external.log
 StandardError=append:$LOG_DIR/external.error.log
-TimeoutStopSec=10
-KillMode=mixed
-ExecStop=/usr/bin/pkill -f "node.*external"
 
 [Install]
 WantedBy=multi-user.target
