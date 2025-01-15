@@ -7,8 +7,8 @@ VENV_DIR="$MAIN_DIR/venv"
 
 # Create necessary directories and log files
 sudo mkdir -p "$LOG_DIR"
-sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,kiosk-browser,external}.log
-sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,kiosk-browser,external}.error.log
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,external}.error.log
 sudo chown -R $USER:$USER "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 chmod 644 "$LOG_DIR"/*.log
@@ -350,7 +350,7 @@ start_service() {
 }
 
 # Start services in correct order
-services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk-server" "nqub-kiosk-browser" "nqub-external")
+services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk-server" "nqub-external")
 for service in "${services[@]}"; do
     start_service $service || exit 1
 done
@@ -361,7 +361,6 @@ log "📊 Check individual service status with:"
 log "sudo journalctl -u nqub-backend-api"
 log "sudo journalctl -u nqub-backend-main"
 log "sudo journalctl -u nqub-kiosk-server"
-log "sudo journalctl -u nqub-kiosk-browser"
 log "sudo journalctl -u nqub-external"
 
 log "🔄 Please reboot the system to complete the installation:"
