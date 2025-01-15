@@ -364,4 +364,5 @@ log "sudo journalctl -u nqub-kiosk-server"
 log "sudo journalctl -u nqub-external"
 
 log "🔄 Please reboot the system to complete the installation:"
+
 log "sudo reboot"
