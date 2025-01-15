@@ -24,8 +24,8 @@ ask() {
 # Always stop services first for safety
 if ask "Stop all NQUB services?"; then
     log "🛑 Stopping services..."
-    sudo systemctl stop nqub-backend-api nqub-backend-main nqub-kiosk-server nqub-kiosk-browser nqub-external
-    sudo systemctl disable nqub-backend-api nqub-backend-main nqub-kiosk-server nqub-kiosk-browser nqub-external
+    sudo systemctl stop nqub-backend-api nqub-backend-main nqub-kiosk-server nqub-external
+    sudo systemctl disable nqub-backend-api nqub-backend-main nqub-kiosk-server nqub-external
 fi
 
 # Remove service files

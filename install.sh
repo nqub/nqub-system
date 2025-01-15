@@ -204,6 +204,24 @@ fi
 
 # Start unclutter with proper process management
 unclutter -idle 0.1 -root &
+
+# Launch Chrome for kiosk and external display
+sleep 10  # Wait for displays to be properly configured
+
+# Kill any existing Chrome instances
+pkill -f chromium-browser || true
+
+# Launch kiosk on primary display
+DISPLAY=:0 chromium-browser --kiosk --no-first-run --noerrdialogs --disable-infobars \
+    --disable-features=TranslateUI --disable-plugins --window-position=0,0 \
+    --window-size=1920,1080 --start-fullscreen 'http://localhost:3000' &
+
+# Launch external display on secondary display (if available)
+if [ -n "$SECONDARY" ]; then
+    DISPLAY=:0 chromium-browser --kiosk --no-first-run --noerrdialogs --disable-infobars \
+        --disable-features=TranslateUI --disable-plugins --window-position=1920,0 \
+        --window-size=1920,1080 --start-fullscreen 'http://localhost:5173' &
+fi
 EOF
 
 sudo chmod +x /usr/local/bin/setup-displays
