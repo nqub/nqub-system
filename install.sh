@@ -194,7 +194,8 @@ sudo tee /etc/systemd/system/nqub-backend-main.service << EOF
 [Unit]
 Description=NQUB Backend Main Service
 After=network.target nqub-backend-api.service
-StartLimitIntervalSec=0
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -203,12 +204,13 @@ WorkingDirectory=$MAIN_DIR/backend
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="PATH=$PATH:/usr/local/bin"
-ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate  && python main.py'
-Restart=always
-RestartSec=10
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && python main.py'
+Restart=on-failure
+RestartSec=30
+KillSignal=SIGINT
+TimeoutStopSec=30
 StandardOutput=append:$LOG_DIR/backend-main.log
 StandardError=append:$LOG_DIR/backend-main.error.log
-TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
