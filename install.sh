@@ -259,7 +259,7 @@ WorkingDirectory=$MAIN_DIR/backend
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=$HOME/.Xauthority"
 Environment="PATH=$PATH:/usr/local/bin"
-ExecStart=/bin/bash -c 'source /home/nqub/nqub-system/venv/bin/activate && python main.py'
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate  && python main.py'
 Restart=always
 RestartSec=10
 StandardOutput=append:$LOG_DIR/backend-main.log
@@ -294,58 +294,28 @@ ExecStop=/usr/bin/pkill -f "node.*kiosk"
 WantedBy=multi-user.target
 EOF
 
-# Kiosk browser service
-sudo tee /etc/systemd/system/nqub-kiosk-browser.service << EOF
-[Unit]
-Description=NQUB Kiosk Browser
-After=graphical.target nqub-kiosk-server.service
-Requires=nqub-kiosk-server.service
-
-[Service]
-Type=simple
-User=nqub
-ExecStartPre=/bin/sleep 10
-ExecStartPre=/usr/local/bin/setup-displays
-ExecStartPre=/bin/bash -c 'until curl -s http://localhost:3000 >/dev/null 2>&1; do sleep 2; done'
-ExecStart=/usr/bin/chromium-browser \
-    --kiosk \
-    --disable-restore-session-state \
-    --window-position=0,0 \
-    --noerrdialogs \
-    --disable-infobars \
-    --no-first-run \
-    --disable-features=TranslateUI \
-    --disable-session-crashed-bubble \
-    http://localhost:3000
-Restart=on-failure
-RestartSec=30
-StandardOutput=append:/var/log/nqub/kiosk-browser.log
-StandardError=append:/var/log/nqub/kiosk-browser.error.log
-
-[Install]
-WantedBy=graphical.target
-EOF
-
 # External display service
 sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
-After=graphical.target nqub-backend-main.service
+After=network.target nqub-backend-main.service
 Requires=nqub-backend-main.service
 
 [Service]
 Type=simple
-User=nqub
-WorkingDirectory=/home/nqub/nqub-system/external
-ExecStartPre=/bin/sleep 5
+User=$USER
+WorkingDirectory=$MAIN_DIR/external
 ExecStart=/usr/bin/npm run dev
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/nqub/external.log
-StandardError=append:/var/log/nqub/external.error.log
+StandardOutput=append:$LOG_DIR/external.log
+StandardError=append:$LOG_DIR/external.error.log
+TimeoutStopSec=10
+KillMode=mixed
+ExecStop=/usr/bin/pkill -f "node.*external"
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
 
 # Service startup with proper order and validation
