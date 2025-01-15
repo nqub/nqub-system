@@ -60,33 +60,6 @@ else
     fi
 fi
 
-# Function to remove display configuration
-cleanup_display_config() {
-    log "🖥️ Cleaning up display configuration..."
-    
-    # Remove setup-displays script
-    sudo rm -f /usr/local/bin/setup-displays
-    
-    # Remove our additions from xinitrc
-    if [ -f /etc/X11/xinit/xinitrc ]; then
-        sudo sed -i '/\/usr\/local\/bin\/setup-displays/d' /etc/X11/xinit/xinitrc
-    fi
-    
-    # Kill any running display-related processes
-    pkill -f unclutter || true
-    pkill -f chromium-browser || true
-    
-    # Reset boot behavior to console
-    sudo raspi-config nonint do_boot_behaviour B1
-    
-    log "✅ Display configuration cleanup complete"
-}
-
-# Remove display setup
-if ask "Remove display setup and reset boot behavior?"; then
-    cleanup_display_config
-fi
-
 # Handle Node.js and GitHub CLI
 if ask "Remove Node.js and GitHub CLI?"; then
     log "🗑️ Removing Node.js and GitHub CLI..."
