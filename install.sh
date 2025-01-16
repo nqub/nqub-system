@@ -242,7 +242,7 @@ sudo tee /etc/systemd/system/nqub-kiosk-server.service << EOF
 [Unit]
 Description=NQUB Kiosk Server
 After=network.target nqub-backend-api.service nqub-backend-main.service
-Requires=nqub-backend-api.service nqub-backend-main.service
+
 
 [Service]
 Type=simple
@@ -265,7 +265,7 @@ sudo tee /etc/systemd/system/nqub-external.service << EOF
 [Unit]
 Description=NQUB External Display
 After=network.target nqub-backend-main.service
-Requires=nqub-backend-main.service
+
 
 [Service]
 Type=simple
