@@ -157,7 +157,7 @@ clone_or_update_repo() {
 
 # Clone repositories
 clone_or_update_repo "nqub-coin-dispenser" "backend"
-clone_or_update_repo "nqub-coin-dispenser-external-screen" "internal"
+clone_or_update_repo "nqub-coin-dispenser-internal-screen" "internal"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
 
 # Setup Python Environment
