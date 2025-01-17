@@ -87,7 +87,14 @@ log "Verifying system dependencies..."
 for cmd in xrandr chromium-browser npm node python3 git curl wget; do
     if ! command -v $cmd &> /dev/null; then
         log "❌ Required command $cmd not found"
-        exit 1
+        if [ "$cmd" == "npm" ] || [ "$cmd" == "node" ]; then
+            log "📦 Installing Node.js and npm..."
+            sudo apt install -y nodejs npm
+            sudo npm install -g n
+            sudo n stable
+        else
+            exit 1
+        fi
     fi
 done
 
@@ -100,13 +107,6 @@ if ! command -v gh &> /dev/null; then
     sudo apt install gh -y
 fi
 
-# Install Node.js and npm if not already installed
-log "📦 Installing Node.js and npm..."
-if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    sudo apt install -y nodejs npm
-    sudo npm install -g n
-    sudo n stable
-fi
 
 # Interactive GitHub authentication with validation
 log "🔑 GitHub Authentication..."

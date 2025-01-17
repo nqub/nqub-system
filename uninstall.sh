@@ -95,20 +95,12 @@ fi
 if ask "Remove system dependencies? (This might affect other applications)"; then
     log "🗑️ Removing system dependencies..."
     sudo apt remove -y \
-        build-essential \
-        git \
-        curl \
-        wget \
-        xterm \
-        chromium-browser \
         python3-pip \
         python3-venv \
         python3-dev \
         libssl-dev \
         libffi-dev \
         libudev-dev \
-        x11-xserver-utils \
-        setserial \
         unclutter
     sudo apt autoremove -y
     sudo apt clean
