@@ -4,6 +4,7 @@
 MAIN_DIR="$HOME/nqub-system"
 BACKUP_DIR="$HOME/nqub-backup"
 LOG_DIR="/var/log/nqub"
+VENV_DIR="$MAIN_DIR/venv"
 
 # Logger function
 log() {
@@ -29,7 +30,7 @@ ask() {
 # Stop services
 if ask "Stop all NQUB services?"; then
     log "🛑 Stopping services..."
-    services=(nqub-backend-api nqub-backend-main nqub-kiosk-server nqub-external)
+    services=(nqub-backend-api nqub-backend-main nqub-internal nqub-external)
     for service in "${services[@]}"; do
         if systemctl is-active --quiet $service; then
             sudo systemctl stop $service

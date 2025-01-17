@@ -22,7 +22,7 @@ fi
 
 # Stop services before update
 log "🛑 Stopping services for update..."
-services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk-server" "nqub-external")
+services=("nqub-backend-api" "nqub-backend-main" "nqub-internal" "nqub-external")
 for service in "${services[@]}"; do
     if systemctl is-active --quiet $service; then
         sudo systemctl stop $service
@@ -59,7 +59,7 @@ update_repo() {
 # Update repositories
 cd "$MAIN_DIR"
 update_repo "backend" || exit 1
-update_repo "kiosk" || exit 1
+update_repo "internal" || exit 1
 update_repo "external" || exit 1
 
 # Update Python dependencies
@@ -74,12 +74,13 @@ prisma generate
 
 # Update Node.js dependencies for frontend applications
 log "📦 Updating frontend dependencies..."
-cd "$MAIN_DIR/kiosk"
+cd "$MAIN_DIR/internal"
 npm install
-npm run build
+
 
 cd "$MAIN_DIR/external"
 npm install
+
 
 # Start services in correct order
 log "🚀 Starting services..."
