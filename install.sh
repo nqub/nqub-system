@@ -102,9 +102,10 @@ fi
 
 # Install Node.js and npm if not already installed
 log "📦 Installing Node.js and npm..."
-if ! command -v node &> /dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejs
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    sudo apt install -y nodejs npm
+    sudo npm install -g n
+    sudo n stable
 fi
 
 # Interactive GitHub authentication with validation
