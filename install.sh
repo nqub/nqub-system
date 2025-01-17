@@ -8,8 +8,8 @@ VENV_DIR="$MAIN_DIR/venv"
 # Create necessary directories and log files
 log "📁 Creating directories and log files..."
 sudo mkdir -p "$LOG_DIR"
-sudo touch "$LOG_DIR/"{install,backend-api,backend-main,kiosk-server,external}.log
-sudo touch "$LOG_DIR/"{backend-api,backend-main,kiosk-server,external}.error.log
+sudo touch "$LOG_DIR/"{install,backend-api,backend-main,internal,external}.log
+sudo touch "$LOG_DIR/"{backend-api,backend-main,internal,external}.error.log
 sudo chown -R $USER:$USER "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 chmod 644 "$LOG_DIR"/*.log
@@ -156,7 +156,7 @@ clone_or_update_repo() {
 
 # Clone repositories
 clone_or_update_repo "nqub-coin-dispenser" "backend"
-clone_or_update_repo "token-dispenser-kiosk" "kiosk"
+clone_or_update_repo "nqub-coin-dispenser-external-screen" "internal"
 clone_or_update_repo "nqub-coin-dispenser-external-screen" "external"
 
 # Setup Python Environment
@@ -176,9 +176,8 @@ prisma db push
 
 # Setup frontend applications
 log "🖥️ Setting up frontend applications..."
-cd "$MAIN_DIR/kiosk"
+cd "$MAIN_DIR/internal"
 npm install
-npm run build
 
 cd "$MAIN_DIR/external"
 npm install
@@ -237,24 +236,25 @@ StandardError=append:$LOG_DIR/backend-main.error.log
 WantedBy=multi-user.target
 EOF
 
-# Kiosk server service
-sudo tee /etc/systemd/system/nqub-kiosk-server.service << EOF
+# Internal display service
+sudo tee /etc/systemd/system/nqub-internal.service << EOF
 [Unit]
-Description=NQUB Kiosk Server
+Description=NQUB Internal Display
 After=network.target 
 
 
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$MAIN_DIR/kiosk
-ExecStart=/usr/bin/npm run start
+WorkingDirectory=$MAIN_DIR/internal
+ExecStart=/usr/bin/npm run dev
 Restart=on-failure
 RestartSec=30
 StartLimitIntervalSec=300
 StartLimitBurst=3
-StandardOutput=append:$LOG_DIR/kiosk-server.log
-StandardError=append:$LOG_DIR/kiosk-server.error.log
+StandardOutput=append:$LOG_DIR/internal.log
+StandardError=append:$LOG_DIR/internal.error.log
+
 
 [Install]
 WantedBy=multi-user.target
@@ -316,7 +316,7 @@ start_service() {
 }
 
 # Start services in correct order
-services=("nqub-backend-api" "nqub-backend-main" "nqub-kiosk-server" "nqub-external")
+services=("nqub-backend-api" "nqub-backend-main" "nqub-internal" "nqub-external")
 for service in "${services[@]}"; do
     start_service $service || exit 1
 done
@@ -326,7 +326,7 @@ log "📝 Log files are available in $LOG_DIR"
 log "📊 Check individual service status with:"
 log "sudo journalctl -u nqub-backend-api"
 log "sudo journalctl -u nqub-backend-main"
-log "sudo journalctl -u nqub-kiosk-server"
+log "sudo journalctl -u nqub-internal"
 log "sudo journalctl -u nqub-external"
 
 log "🔄 Please reboot the system to complete the installation:"
