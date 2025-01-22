@@ -76,6 +76,7 @@ sudo apt update && sudo apt install -y \
     libssl-dev \
     libffi-dev \
     libudev-dev \
+    libraspberrypi-bin \
     x11-xserver-utils \
     setserial \
     unclutter \
